@@ -23,15 +23,38 @@ void GraphView::rebuildGraphics()
     scene->clear();
     GraphDescription g = GraphModel::describe(patch);
     GraphLayout::layout(g);
-    for (const auto &f : g.frames) scene->addItem(new SectionFrameItem(f));
-    QHash<QString, NodeItem*> items;
+
+    // Section frames behind everything else
+    for (const auto &f : g.frames)
+        scene->addItem(new SectionFrameItem(f));
+
+    // Create all NodeItems first so we can resolve pin anchors
+    QHash<QString, NodeItem*> nodeItems;
     for (const auto &n : g.nodes) {
         auto *it = new NodeItem(n);
         it->setPos(n.pos);
         scene->addItem(it);
-        items.insert(n.id, it);
+        nodeItems.insert(n.id, it);
     }
-    for (const auto &w : g.wires) scene->addItem(new WireItem(w, items));
+
+    // Build a scene-space lookup table: pinId → scene position
+    // We use NodeItem::pinAnchorLocal() + mapToScene() to get scene coords.
+    QHash<QString, QPointF> pinScenePos;
+    for (auto it = nodeItems.cbegin(); it != nodeItems.cend(); ++it) {
+        NodeItem *ni = it.value();
+        for (const GraphPin &p : ni->graphNode().pins) {
+            QPointF local = ni->pinAnchorLocal(p.id);
+            pinScenePos.insert(p.id, ni->mapToScene(local));
+        }
+    }
+
+    // Create WireItems with resolved endpoints
+    for (const auto &w : g.wires) {
+        QPointF from = pinScenePos.value(w.fromPinId, QPointF());
+        QPointF to   = pinScenePos.value(w.toPinId,   QPointF());
+        scene->addItem(new WireItem(w, from, to));
+    }
+
     scene->setSceneRect(scene->itemsBoundingRect().adjusted(-200, -200, 200, 200));
 }
 
