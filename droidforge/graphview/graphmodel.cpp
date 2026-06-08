@@ -5,9 +5,12 @@
 #include "jackassignment.h"
 #include "jackassignmentinput.h"
 #include "atom.h"
+#include "atomcable.h"
 #include "droidfirmware.h"
 #include "atomregister.h"
 #include "registertypes.h"
+#include <QHash>
+#include <QMultiHash>
 
 namespace {
 
@@ -151,6 +154,61 @@ void addHardwareNodes(GraphDescription &g, const Patch *patchConst)
     }
 }
 
+void addWires(GraphDescription &g, const Patch *patch)
+{
+    QHash<QString, QString> cableProducer;        // cable name -> producer pinId
+    QMultiHash<QString, QString> cableConsumers;  // cable name -> consumer pinId
+
+    for (qsizetype s = 0; s < patch->numSections(); s++) {
+        const QList<Circuit *> &circuits = patch->section(s)->getCircuits();
+        for (qsizetype c = 0; c < circuits.size(); c++) {
+            const Circuit *circuit = circuits[c];
+            for (qsizetype j = 0; j < circuit->numJackAssignments(); j++) {
+                const JackAssignment *ja = circuit->jackAssignment(static_cast<unsigned>(j));
+                const QString jack = ja->jackName();
+
+                if (ja->isOutput()) {
+                    const Atom *a = ja->atomAt(1);
+                    if (!a) continue;
+                    QString outPin = pinId(static_cast<int>(s), static_cast<int>(c), jack, "out");
+                    if (a->isCable()) {
+                        cableProducer.insert(static_cast<const AtomCable *>(a)->getCable(), outPin);
+                    } else if (a->isRegister()) {
+                        GraphWire w;
+                        w.fromPinId = outPin;
+                        w.toPinId   = "hw." + a->toString();
+                        g.wires.append(w);
+                    }
+                } else if (ja->isInput()) {
+                    static const char * const suffixes[3] = { "p", "s", "o" };
+                    for (int col = 0; col < 3; col++) {
+                        const Atom *a = ja->atomAt(col);
+                        if (!a) continue;
+                        QString inPin = pinId(static_cast<int>(s), static_cast<int>(c), jack, suffixes[col]);
+                        if (a->isCable()) {
+                            cableConsumers.insert(static_cast<const AtomCable *>(a)->getCable(), inPin);
+                        } else if (a->isRegister()) {
+                            GraphWire w;
+                            w.fromPinId = "hw." + a->toString();
+                            w.toPinId   = inPin;
+                            g.wires.append(w);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    for (auto it = cableConsumers.constBegin(); it != cableConsumers.constEnd(); ++it) {
+        GraphWire w;
+        w.isCable    = true;
+        w.cableName  = it.key();
+        w.fromPinId  = cableProducer.value(it.key());
+        w.toPinId    = it.value();
+        g.wires.append(w);
+    }
+}
+
 } // namespace
 
 GraphDescription GraphModel::describe(const Patch *patch)
@@ -178,5 +236,6 @@ GraphDescription GraphModel::describe(const Patch *patch)
         }
     }
     addHardwareNodes(g, patch);
+    addWires(g, patch);
     return g;
 }
