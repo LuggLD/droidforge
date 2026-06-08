@@ -271,6 +271,20 @@ set(PROJECT_SOURCES
     utilities/utilities.cpp
     utilities/utilities.h
     resources.qrc
+    graphview/graphmodeltypes.h
+    graphview/graphmodeltypes.cpp
+    graphview/graphmodel.h
+    graphview/graphmodel.cpp
+    graphview/graphlayout.h
+    graphview/graphlayout.cpp
+    graphview/graphview.h
+    graphview/graphview.cpp
+    graphview/nodeitem.h
+    graphview/nodeitem.cpp
+    graphview/wireitem.h
+    graphview/wireitem.cpp
+    graphview/sectionframeitem.h
+    graphview/sectionframeitem.cpp
 )
 
 qt_add_executable(${PROJECT_NAME}
@@ -292,6 +306,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     utilities
     main
     parser
+    graphview
 )
 
 if(APPLE)
