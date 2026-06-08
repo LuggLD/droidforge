@@ -6,6 +6,8 @@
 #include "jackassignmentinput.h"
 #include "atom.h"
 #include "droidfirmware.h"
+#include "atomregister.h"
+#include "registertypes.h"
 
 namespace {
 
@@ -63,6 +65,92 @@ void addOutputPin(GraphNode &node, int s, int c, const QString &circuit, const J
     node.pins.append(pin);
 }
 
+// Keep in sync with Patch::registerIsOutputOnly() in patch.cpp.
+bool isSourceRegisterType(register_type_t t) {
+    return t == REGISTER_INPUT || t == REGISTER_NORMALIZE
+        || t == REGISTER_POT   || t == REGISTER_BUTTON
+        || t == REGISTER_ENCODER || t == REGISTER_SWITCH;
+}
+
+void addHwPin(GraphNode &node, const AtomRegister &reg, Patch *patch, bool source)
+{
+    GraphPin pin;
+    pin.id        = "hw." + reg.toString();
+    pin.label     = reg.toString();
+    pin.direction = source ? GraphPinDirection::Out : GraphPinDirection::In;
+    pin.portKind  = GraphPortKind::Signal;
+    pin.role      = GraphPinRole::Simple;
+    pin.used      = patch->registerUsed(reg);
+    node.pins.append(pin);
+}
+
+void addHardwareNodes(GraphDescription &g, const Patch *patchConst)
+{
+    // registerUsed is logically const (only iterates, never mutates); cast is safe.
+    Patch *patch = const_cast<Patch *>(patchConst);
+
+    // Master I/O nodes
+    static const register_type_t globalTypes[] = {
+        REGISTER_INPUT, REGISTER_NORMALIZE, REGISTER_OUTPUT, REGISTER_GATE
+    };
+    GraphNode masterIn;
+    masterIn.id    = "hw.master.in";
+    masterIn.kind  = GraphNodeKind::HardwareSource;
+    masterIn.title = "Master in";
+
+    GraphNode masterOut;
+    masterOut.id    = "hw.master.out";
+    masterOut.kind  = GraphNodeKind::HardwareSink;
+    masterOut.title = "Master out";
+
+    for (register_type_t t : globalTypes) {
+        unsigned count = the_firmware->numGlobalRegisters(t);
+        for (unsigned n = 1; n <= count; n++) {
+            AtomRegister reg(t, 0, 0, n);
+            bool source = isSourceRegisterType(t);
+            addHwPin(source ? masterIn : masterOut, reg, patch, source);
+        }
+    }
+    if (!masterIn.pins.isEmpty())  g.nodes.append(masterIn);
+    if (!masterOut.pins.isEmpty()) g.nodes.append(masterOut);
+
+    // Per-controller nodes
+    static const register_type_t ctrlSource[] = {
+        REGISTER_POT, REGISTER_BUTTON, REGISTER_ENCODER, REGISTER_SWITCH
+    };
+    static const register_type_t ctrlSink[] = {
+        REGISTER_LED, REGISTER_RGB_LED
+    };
+
+    for (qsizetype ci = 0; ci < patch->numControllers(); ci++) {
+        QString ctrlName = patch->controller(ci);
+
+        GraphNode controls;
+        controls.id    = QString("hw.ctrl%1.controls").arg(ci + 1);
+        controls.kind  = GraphNodeKind::HardwareSource;
+        controls.title = QString("Ctrl %1 · %2").arg(ci + 1).arg(ctrlName);
+
+        GraphNode leds;
+        leds.id    = QString("hw.ctrl%1.leds").arg(ci + 1);
+        leds.kind  = GraphNodeKind::HardwareSink;
+        leds.title = QString("Ctrl %1 · %2 LEDs").arg(ci + 1).arg(ctrlName);
+
+        for (register_type_t t : ctrlSource) {
+            unsigned count = the_firmware->numControllerRegisters(ctrlName, t);
+            for (unsigned n = 1; n <= count; n++)
+                addHwPin(controls, AtomRegister(t, static_cast<unsigned>(ci + 1), 0, n), patch, true);
+        }
+        for (register_type_t t : ctrlSink) {
+            unsigned count = the_firmware->numControllerRegisters(ctrlName, t);
+            for (unsigned n = 1; n <= count; n++)
+                addHwPin(leds, AtomRegister(t, static_cast<unsigned>(ci + 1), 0, n), patch, false);
+        }
+
+        if (!controls.pins.isEmpty()) g.nodes.append(controls);
+        if (!leds.pins.isEmpty())     g.nodes.append(leds);
+    }
+}
+
 } // namespace
 
 GraphDescription GraphModel::describe(const Patch *patch)
@@ -89,5 +177,6 @@ GraphDescription GraphModel::describe(const Patch *patch)
             g.nodes.append(node);
         }
     }
+    addHardwareNodes(g, patch);
     return g;
 }
