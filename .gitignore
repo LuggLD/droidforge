@@ -8,3 +8,7 @@ build
 
 # Superpowers brainstorm visual companion
 .superpowers/
+
+# Throwaway node-graph test harness (never committed)
+droidforge/tests/
+droidforge/build-tests/
