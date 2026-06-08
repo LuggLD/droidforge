@@ -19,6 +19,20 @@ QString pinId(int s, int c, const QString &jack, const char *suffix)
     return QString("c%1.%2.%3.%4").arg(s).arg(c).arg(jack).arg(suffix);
 }
 
+// atomAt() is 1-based: column 1=PRIMARY, 2=SCALE, 3=OFFSET.
+// Both addInputPins and addWires must use the same mapping.
+static constexpr char kHwPrefix[] = "hw.";
+
+const char *inputAtomSuffix(int column)
+{
+    switch (column) {
+    case 1: return "p";
+    case 2: return "s";
+    case 3: return "o";
+    default: return "";
+    }
+}
+
 GraphPortKind portKindOf(const QString &circuit, const QString &jack, bool isInput)
 {
     QString sym = the_firmware->jackTypeSymbol(circuit, isInput ? "inputs" : "outputs", jack);
@@ -45,12 +59,12 @@ void addInputPins(GraphNode &node, int s, int c, const QString &circuit, const J
     };
 
     if (kind == GraphPortKind::Text) {
-        makePin(GraphPinRole::Simple, "p", in ? in->atomAt(0) : nullptr);
+        makePin(GraphPinRole::Simple, "p", in ? in->atomAt(1) : nullptr);
         return;
     }
-    makePin(GraphPinRole::Primary, "p", in ? in->atomAt(0) : nullptr);
-    makePin(GraphPinRole::Scale,   "s", in ? in->atomAt(1) : nullptr);
-    makePin(GraphPinRole::Offset,  "o", in ? in->atomAt(2) : nullptr);
+    makePin(GraphPinRole::Primary, "p", in ? in->atomAt(1) : nullptr);
+    makePin(GraphPinRole::Scale,   "s", in ? in->atomAt(2) : nullptr);
+    makePin(GraphPinRole::Offset,  "o", in ? in->atomAt(3) : nullptr);
 }
 
 void addOutputPin(GraphNode &node, int s, int c, const QString &circuit, const JackAssignment *ja)
@@ -78,7 +92,7 @@ bool isSourceRegisterType(register_type_t t) {
 void addHwPin(GraphNode &node, const AtomRegister &reg, Patch *patch, bool source)
 {
     GraphPin pin;
-    pin.id        = "hw." + reg.toString();
+    pin.id        = QString(kHwPrefix) + reg.toString();
     pin.label     = reg.toString();
     pin.direction = source ? GraphPinDirection::Out : GraphPinDirection::In;
     pin.portKind  = GraphPortKind::Signal;
@@ -176,20 +190,21 @@ void addWires(GraphDescription &g, const Patch *patch)
                     } else if (a->isRegister()) {
                         GraphWire w;
                         w.fromPinId = outPin;
-                        w.toPinId   = "hw." + a->toString();
+                        w.toPinId   = QString(kHwPrefix) + a->toString();
                         g.wires.append(w);
                     }
                 } else if (ja->isInput()) {
-                    static const char * const suffixes[3] = { "p", "s", "o" };
-                    for (int col = 0; col < 3; col++) {
+                    const bool isText = (portKindOf(circuit->getName(), jack, true) == GraphPortKind::Text);
+                    const int maxCol = isText ? 1 : 3;
+                    for (int col = 1; col <= maxCol; col++) {
                         const Atom *a = ja->atomAt(col);
                         if (!a) continue;
-                        QString inPin = pinId(static_cast<int>(s), static_cast<int>(c), jack, suffixes[col]);
+                        QString inPin = pinId(static_cast<int>(s), static_cast<int>(c), jack, inputAtomSuffix(col));
                         if (a->isCable()) {
                             cableConsumers.insert(static_cast<const AtomCable *>(a)->getCable(), inPin);
                         } else if (a->isRegister()) {
                             GraphWire w;
-                            w.fromPinId = "hw." + a->toString();
+                            w.fromPinId = QString(kHwPrefix) + a->toString();
                             w.toPinId   = inPin;
                             g.wires.append(w);
                         }
