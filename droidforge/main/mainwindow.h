@@ -5,6 +5,7 @@
 #include "patchoperator.h"
 #include "patchsectionmanager.h"
 #include "patchsectionview.h"
+#include "graphview.h"
 #include "rackview.h"
 #include "patcheditengine.h"
 #include "patchview.h"
@@ -26,6 +27,7 @@
 #include <QStatusBar>
 #include <QVBoxLayout>
 #include <QLabel>
+#include <QStackedWidget>
 
 class PatchEditEngine;
 class StatusDump;
@@ -48,6 +50,7 @@ class MainWindow : public QMainWindow, PatchView
     PatchOperator patchOperator;
     RackView rackView;
     PatchSectionView patchSectionView;
+    GraphView graphView;
     PatchSectionManager patchSectionManager;
     PatchSizeIndicator patchSizeIndicator;
     CableStatusIndicator cableStatusIndicator;
@@ -72,6 +75,7 @@ class MainWindow : public QMainWindow, PatchView
     QString filePath; // of loaded patch
     QSplitter *rackSplitter;
     QSplitter *sectionSplitter;
+    QStackedWidget *editorStack;
     QToolBar *toolbar;
 
     const StatusDump *currentStatusDump;
@@ -144,6 +148,7 @@ private slots:
     void nextWindow();
     void previousWindow();
     void enablePatchGenerators();
+    void toggleGraphView(bool on);
 
 signals:
     void allActionsAborted();

@@ -35,6 +35,7 @@ MainWindow::MainWindow(QString initialFilename, const Patch *initialRack)
     , patchOperator(this, &thePatch, initialFilename, initialRack)
     , rackView(this, &thePatch)
     , patchSectionView(this, &thePatch)
+    , graphView(&thePatch, this)
     , patchSectionManager(this, &thePatch)
     , patchSizeIndicator(this, &thePatch)
     , cableStatusIndicator(this, &thePatch)
@@ -61,7 +62,11 @@ MainWindow::MainWindow(QString initialFilename, const Patch *initialRack)
     sectionSplitter = new QSplitter(rackSplitter);
     sectionSplitter->setOrientation(Qt::Horizontal);
     sectionSplitter->addWidget(&patchSectionManager);
-    sectionSplitter->addWidget(&patchSectionView);
+    editorStack = new QStackedWidget(this);
+    editorStack->addWidget(&patchSectionView); // index 0 = list editor
+    editorStack->addWidget(&graphView);        // index 1 = node graph
+    editorStack->setCurrentIndex(0);
+    sectionSplitter->addWidget(editorStack);
     sectionSplitter->setStretchFactor(0, 0);
     sectionSplitter->setStretchFactor(1, 1);
     sectionSplitter->setHandleWidth(SPLITTER_HANDLE_WIDTH);
@@ -113,6 +118,7 @@ MainWindow::MainWindow(QString initialFilename, const Patch *initialRack)
 
     // Events that we are interested in
     connect(theHub(), &UpdateHub::patchModified, this, &MainWindow::modifyPatch);
+    connect(theHub(), &UpdateHub::patchModified, &graphView, &GraphView::rebuildGraphics);
     connect(theHub(), &UpdateHub::sectionSwitched, this, &MainWindow::cursorMoved);
     connect(theHub(), &UpdateHub::cursorMoved, this, &MainWindow::cursorMoved);
 
@@ -478,7 +484,19 @@ void MainWindow::createViewMenu()
     ADD_ACTION(ACTION_SHOW_REGISTER_USAGE, menu);
     ADD_ACTION(ACTION_TEXT_MODE, menu);
 
+    menu->addSeparator();
+
+    QAction *viewGraphAction = new QAction(tr("Node Graph"), this);
+    viewGraphAction->setCheckable(true);
+    viewGraphAction->setChecked(false);
+    connect(viewGraphAction, &QAction::toggled, this, &MainWindow::toggleGraphView);
+    menu->addAction(viewGraphAction);
+
     menu->addSeparator(); // separates "Enter full screen" on Mac
+}
+void MainWindow::toggleGraphView(bool on)
+{
+    editorStack->setCurrentIndex(on ? 1 : 0);
 }
 void MainWindow::createHelpMenu()
 {
