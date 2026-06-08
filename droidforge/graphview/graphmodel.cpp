@@ -252,5 +252,16 @@ GraphDescription GraphModel::describe(const Patch *patch)
     }
     addHardwareNodes(g, patch);
     addWires(g, patch);
+
+    for (qsizetype s = 0; s < patch->numSections(); s++) {
+        GraphSectionFrame frame;
+        frame.sectionIndex = static_cast<int>(s);
+        frame.title = patch->section(s)->getNonemptyTitle();
+        for (const auto &n : g.nodes)
+            if (n.kind == GraphNodeKind::Circuit && n.sectionIndex == static_cast<int>(s))
+                frame.nodeIds.append(n.id);
+        g.frames.append(frame);
+    }
+
     return g;
 }
