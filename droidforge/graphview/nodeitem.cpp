@@ -168,7 +168,11 @@ QPointF NodeItem::pinAnchorLocal(const QString &pinId) const
 QRectF NodeItem::boundingRect() const
 {
     if (layoutDirty) doLayout();
-    return cachedRect;
+    // Connectors are painted centred ON the left/right edges, extending outside
+    // cachedRect.  The largest horizontal overhang is CONNECTOR_RADIUS (circle)
+    // which equals 5 px; add 1 px for the 1-px outline pen on all sides.
+    constexpr qreal CONNECTOR_EXTENT = CONNECTOR_RADIUS; // 5.0 px
+    return cachedRect.adjusted(-(CONNECTOR_EXTENT + 1), -1, (CONNECTOR_EXTENT + 1), 1);
 }
 
 void NodeItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *, QWidget *)

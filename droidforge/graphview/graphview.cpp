@@ -48,10 +48,16 @@ void GraphView::rebuildGraphics()
         }
     }
 
-    // Create WireItems with resolved endpoints
+    // Create WireItems with resolved endpoints.
+    // Skip wires where either endpoint pin id is missing from the scene-pos map
+    // (an empty id or a non-empty id not yet in the map both mean "unresolvable").
     for (const auto &w : g.wires) {
-        QPointF from = pinScenePos.value(w.fromPinId, QPointF());
-        QPointF to   = pinScenePos.value(w.toPinId,   QPointF());
+        if (w.fromPinId.isEmpty() || !pinScenePos.contains(w.fromPinId))
+            continue;
+        if (w.toPinId.isEmpty() || !pinScenePos.contains(w.toPinId))
+            continue;
+        QPointF from = pinScenePos.value(w.fromPinId);
+        QPointF to   = pinScenePos.value(w.toPinId);
         scene->addItem(new WireItem(w, from, to));
     }
 
