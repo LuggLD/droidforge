@@ -19,6 +19,46 @@ The scale and offset rows should be visually subordinate to the primary —
 e.g. slightly indented — so the grouping reads as "this input, times this,
 plus this." (Operator note, 2026-06-09.)
 
+## Wiring milestone follow-ups (surfaced during interactive testing, 2026-06-10)
+
+### Rack-accurate hardware nodes (MASTER vs MASTER18, G8 expanders, X7)
+The hardware nodes are built from hardcoded firmware counts
+(`numGlobalRegisters` = fixed 8 I / 8 N / 8 O / 12 G) and do **not** reflect the
+configured rack. Per the DROID manual (verified):
+- **Standard MASTER:** 8 CV inputs (I1–I8), 8 CV outputs (O1–O8), a 4×4 LED
+  matrix. **No dedicated gate sockets** — gates come only from G8 expanders / X7.
+- **MASTER18:** 8 CV outputs; **no CV inputs** — instead 2 gate/trigger inputs
+  (I1, I2, logic-level) and 4 gate outputs (G1–G4); built-in VCO tuner; MIDI.
+- **G8 expander:** up to 4, each 8 gate jacks (`G1.1…`, `G2.1…`), every jack
+  input *or* output depending on use. The Forge shows one G8 by default.
+- **X7:** 4 gate outputs (`G9`–`G12`) plus USB/MIDI.
+
+Today the master node always shows I1–8 / N1–8 / O1–8 (correct for a standard
+MASTER, **wrong for MASTER18**) and 12 gate pins that — after the 2026-06-10 id
+fix — represent "one G8 (`G1.1`–`G1.8`) + X7 (`G9`–`G12`)", which matches the
+Forge default but isn't disambiguated by what's actually installed. To do:
+drive node construction from `Patch::typeOfMaster()` and the rack config
+(`ModuleBuilder::allRegistersOf` / installed modules) instead of fixed counts;
+render only installed G8 expanders (and additional ones, `g8≥2`); model
+MASTER18's gate I/O. **Caveat:** `ModuleBuilder` is stubbed in the gitignored
+test harness, so this is largely app-verified, not unit-testable there. Deferred
+to a dedicated session (too big to fold into the wiring fixes). Operator note,
+2026-06-10.
+
+### Output-driving-a-register read-back feels wrong in the graph (edge #1)
+When a circuit output drives an output register (e.g. `out = O1`) and you drag
+that output to another circuit's input, the new wire connects from the hardware
+node's **read pin** (`hw.O1.read`), not from the circuit output you grabbed —
+because a DROID output jack holds exactly one atom (the register `O1`), so the
+value can only be re-read via the register, not also produced as a cable. This
+is correct in list/text form but reads oddly in a node graph (the wire appears
+to jump to the hardware node). Needs a design pass. Options to weigh: (a) render
+the wire visually from the grabbed output to the input while the model still
+stores `O1` (treat `hw.O1.read` and the producing output as visual aliases);
+(b) disallow dragging from a register-driving output to an input, requiring the
+read to start from the read pin; (c) accept current behavior with a visual hint
+linking the producing output to its `*.read` pin. Operator note, 2026-06-10.
+
 ## Tech debt
 
 ### Pin-id grammar is duplicated (construction vs parsing)
