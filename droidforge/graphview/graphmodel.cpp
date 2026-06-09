@@ -130,7 +130,8 @@ void appendRegisterPins(GraphNode &node, const AtomRegister &reg, Patch *patch)
 
     GraphPin r;
     r.id        = hwReadPinId(reg, patch);   // base + ".read"
-    r.label     = QString();                 // labelled by the write pin's row
+    r.label     = reg.toString();            // self-labelled: read pins don't
+                                             // align row-for-row with write pins
     r.direction = GraphPinDirection::Out;
     r.portKind  = GraphPortKind::Signal;
     r.role      = GraphPinRole::Simple;
