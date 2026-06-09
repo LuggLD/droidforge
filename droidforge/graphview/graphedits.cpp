@@ -113,4 +113,75 @@ bool isValidDrop(const Patch *patch, const QString &fromPin,
     return true;
 }
 
+// Resolve a parsed pin to its JackAssignment (or nullptr for hardware pins).
+// Uses the public (non-const) jackAssignment(i) / numJackAssignments() path because
+// Circuit::findJack(name) (non-const overload) is private.
+static JackAssignment *jackFor(Patch *patch, const PinRef &ref)
+{
+    if (ref.kind == PinRef::CircuitInput || ref.kind == PinRef::CircuitOutput) {
+        Circuit *circ = patch->section(ref.section)->circuit(ref.circuit);
+        for (qsizetype i = 0; i < circ->numJackAssignments(); ++i) {
+            JackAssignment *ja = circ->jackAssignment(static_cast<unsigned>(i));
+            if (ja->jackName() == ref.jack)
+                return ja;
+        }
+    }
+    return nullptr;
+}
+
+// The atom a source pin offers to a circuit-input sink (cloned for the caller).
+// For a circuit output this may MINT a cable and store it on the output.
+static Atom *netAtomForInput(Patch *patch, const PinRef &src)
+{
+    if (src.kind == PinRef::HwSource || src.kind == PinRef::HwRead)
+        return new AtomRegister(src.reg);
+
+    if (src.kind == PinRef::CircuitOutput) {
+        JackAssignment *out = jackFor(patch, src);
+        if (!out)
+            return nullptr;
+        const Atom *cur = out->atomAt(1);
+        if (cur)
+            return cur->clone();          // reuse existing cable, or read-back a register (edge #1)
+        const QString name = patch->freshCableName();
+        out->replaceAtom(1, new AtomCable(name)); // mint + store on producer
+        return new AtomCable(name);
+    }
+    return nullptr;
+}
+
+bool connectPins(Patch *patch, const QString &fromPin, const QString &toPin)
+{
+    PinRef a = parsePin(patch, fromPin);
+    PinRef b = parsePin(patch, toPin);
+    if (!a.valid() || !b.valid())
+        return false;
+    // identify source + sink regardless of drag order
+    PinRef src = a.isSource() ? a : b;
+    PinRef snk = a.isSink()   ? a : b;
+    if (!src.isSource() || !snk.isSink())
+        return false;
+
+    if (snk.kind == PinRef::CircuitInput) {
+        Atom *atom = netAtomForInput(patch, src);
+        if (!atom)
+            return false;
+        JackAssignment *in = jackFor(patch, snk);
+        if (!in) { delete atom; return false; }
+        in->replaceAtom(snk.column, atom);
+        return true;
+    }
+    if (snk.kind == PinRef::HwWrite) {
+        // out -> hw sink: the atom lives on the producing circuit output.
+        if (src.kind != PinRef::CircuitOutput)
+            return false;
+        JackAssignment *out = jackFor(patch, src);
+        if (!out)
+            return false;
+        out->replaceAtom(1, new AtomRegister(snk.reg));
+        return true;
+    }
+    return false;
+}
+
 } // namespace GraphEdits
