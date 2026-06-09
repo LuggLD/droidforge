@@ -4,6 +4,8 @@
 #include "graphmodeltypes.h"
 #include "graphedits.h"
 #include <QGraphicsView>
+#include <QList>
+#include <QPointF>
 class QGraphicsScene;
 class QGraphicsPathItem;
 class GraphView : public QGraphicsView, public PatchView {
@@ -30,7 +32,11 @@ private:
     // Active drag state
     bool dragging = false;
     QString dragFromPin;
-    QPointF dragFromScenePos;
+    // The fixed end(s) of the preview wire(s), in scene coords. The rubber-band
+    // draws a line from each anchor to the cursor. For a plain connect this is
+    // the dragged pin; for a sink pick-up (copy/move) it is the source feeding
+    // the sink; for a source pick-up (re-home) it is every connected sink.
+    QList<QPointF> dragAnchors;
     GraphEdits::DragMode dragMode = GraphEdits::DragMode::Connect;
     QGraphicsPathItem *rubber = nullptr;
 };

@@ -146,7 +146,27 @@ void GraphView::mousePressEvent(QMouseEvent *event)
             GraphEdits::PinRef ref = GraphEdits::parsePin(patch, pin);
             dragMode = modeFor(ref, event->modifiers());
             dragFromPin = pin;
-            dragFromScenePos = pinScenePos(pin);
+            // Anchor the preview at the *fixed* end(s) of what's being dragged,
+            // so the rubber-band reads as the user's intent (not pin->same-kind):
+            //  - copy/move from a sink: the source currently feeding that sink
+            //  - re-home from a source: every sink the source currently feeds
+            //  - plain connect: the dragged pin itself
+            dragAnchors.clear();
+            if (dragMode == GraphEdits::DragMode::Copy
+                || dragMode == GraphEdits::DragMode::Move) {
+                const QString src = GraphEdits::getConnectedSource(patch, pin);
+                dragAnchors.append(src.isEmpty() ? pinScenePos(pin) : pinScenePos(src));
+            }
+            else if (dragMode == GraphEdits::DragMode::Rehome) {
+                const QStringList sinks = GraphEdits::getConnectedSinks(patch, pin);
+                for (const QString &s : sinks)
+                    dragAnchors.append(pinScenePos(s));
+                if (dragAnchors.isEmpty())
+                    dragAnchors.append(pinScenePos(pin));
+            }
+            else {
+                dragAnchors.append(pinScenePos(pin));
+            }
             dragging = true;
             setDragMode(QGraphicsView::NoDrag); // suspend pan while wiring
             rubber = new QGraphicsPathItem();
@@ -179,8 +199,10 @@ void GraphView::mouseMoveEvent(QMouseEvent *event)
         const QPointF scenePos = mapToScene(event->pos());
         const QString target = pinAtScene(scenePos);
         QPainterPath path;
-        path.moveTo(dragFromScenePos);
-        path.lineTo(scenePos);
+        for (const QPointF &anchor : dragAnchors) {
+            path.moveTo(anchor);
+            path.lineTo(scenePos);
+        }
         rubber->setPath(path);
 
         const bool ok = !target.isEmpty()
