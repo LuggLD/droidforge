@@ -1,6 +1,14 @@
 #include "wireitem.h"
 #include <QPainter>
 #include <QPainterPath>
+#include <QPainterPathStroker>
+#include <QStyleOptionGraphicsItem>
+#include <QStyle>
+
+// Half-width of the wire's clickable hit area; boundingRect must cover it so
+// the shape() never pokes outside the bounds (Qt requires shape() ⊆ boundingRect()).
+static constexpr qreal WIRE_HIT_HALF_WIDTH = 5.0;        // → stroker width 10
+static constexpr qreal BOUNDING_PAD_Y = WIRE_HIT_HALF_WIDTH + 1.0; // 1px margin over shape
 
 // Tangent offset for the cubic Bézier (horizontal pull).
 // Use a fraction of the horizontal distance so short wires still curve nicely.
@@ -8,6 +16,16 @@ static qreal tangentX(const QPointF &from, const QPointF &to)
 {
     qreal dx = qAbs(to.x() - from.x());
     return qMax(40.0, dx * 0.45);
+}
+
+static QPainterPath cubicPath(const QPointF &from, const QPointF &to)
+{
+    qreal tx = tangentX(from, to);
+    QPainterPath path;
+    path.moveTo(from);
+    path.cubicTo(QPointF(from.x() + tx, from.y()),
+                 QPointF(to.x() - tx, to.y()), to);
+    return path;
 }
 
 WireItem::WireItem(const GraphWire &w, const QPointF &from, const QPointF &to)
@@ -22,6 +40,8 @@ WireItem::WireItem(const GraphWire &w, const QPointF &from, const QPointF &to)
 
     // WireItem lives in scene space (no parent), so we set its pos to origin.
     setPos(0, 0);
+    setFlag(QGraphicsItem::ItemIsSelectable, valid);
+    setZValue(-1); // wires sit behind nodes
 }
 
 QRectF WireItem::boundingRect() const
@@ -30,23 +50,24 @@ QRectF WireItem::boundingRect() const
     qreal tx = tangentX(fromPt, toPt);
     qreal minX = qMin(fromPt.x(), toPt.x()) - tx;
     qreal maxX = qMax(fromPt.x(), toPt.x()) + tx;
-    qreal minY = qMin(fromPt.y(), toPt.y()) - 4;
-    qreal maxY = qMax(fromPt.y(), toPt.y()) + 4;
+    qreal minY = qMin(fromPt.y(), toPt.y()) - BOUNDING_PAD_Y;
+    qreal maxY = qMax(fromPt.y(), toPt.y()) + BOUNDING_PAD_Y;
     return QRectF(QPointF(minX, minY), QPointF(maxX, maxY)).normalized();
 }
 
-void WireItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *, QWidget *)
+QPainterPath WireItem::shape() const
+{
+    if (!valid) return QPainterPath();
+    QPainterPathStroker stroker;
+    stroker.setWidth(WIRE_HIT_HALF_WIDTH * 2.0); // generous click target
+    return stroker.createStroke(cubicPath(fromPt, toPt));
+}
+
+void WireItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *)
 {
     if (!valid) return;
 
-    qreal tx = tangentX(fromPt, toPt);
-    QPainterPath path;
-    path.moveTo(fromPt);
-    path.cubicTo(
-        QPointF(fromPt.x() + tx, fromPt.y()),
-        QPointF(toPt.x()   - tx, toPt.y()),
-        toPt
-    );
+    QPainterPath path = cubicPath(fromPt, toPt);
 
     QPen pen;
     if (wire.isCable) {
@@ -61,6 +82,11 @@ void WireItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *, QWidge
         pen.setStyle(Qt::DashLine);
     }
     pen.setCapStyle(Qt::RoundCap);
+
+    if (option->state & QStyle::State_Selected) {
+        pen.setColor(QColor(255, 255, 255));
+        pen.setWidthF(pen.widthF() + 1.5);
+    }
 
     painter->setPen(pen);
     painter->setBrush(Qt::NoBrush);

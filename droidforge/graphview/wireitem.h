@@ -2,6 +2,7 @@
 #define WIREITEM_H
 #include "graphmodeltypes.h"
 #include <QGraphicsItem>
+#include <QPainterPath>
 #include <QPointF>
 
 // WireItem receives its two endpoints as scene-space coordinates.
@@ -16,7 +17,9 @@ class WireItem : public QGraphicsItem {
 public:
     // from/to are scene-space; pass QPointF() to flag a missing endpoint.
     explicit WireItem(const GraphWire &w, const QPointF &from, const QPointF &to);
+    const GraphWire &graphWire() const { return wire; }
     QRectF boundingRect() const override;
+    QPainterPath shape() const override;
     void paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget) override;
 };
 #endif
