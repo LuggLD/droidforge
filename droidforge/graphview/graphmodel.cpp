@@ -233,8 +233,10 @@ void addWires(GraphDescription &g, const Patch *patch)
                         if (a->isCable()) {
                             cableConsumers.insert(static_cast<const AtomCable *>(a)->getCable(), inPin);
                         } else if (a->isRegister()) {
+                            const AtomRegister &areg =
+                                *static_cast<const AtomRegister *>(a);
                             GraphWire w;
-                            w.fromPinId = QString(kHwPrefix) + a->toString();
+                            w.fromPinId = hwReadPinId(areg, patch); // hw.<reg>.read for outputs
                             w.toPinId   = inPin;
                             g.wires.append(w);
                         }
