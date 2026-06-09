@@ -6,6 +6,10 @@
 #include "sectionframeitem.h"
 #include <QGraphicsScene>
 #include <QWheelEvent>
+#include <QMouseEvent>
+#include <QGraphicsPathItem>
+#include <QPen>
+#include <QPainterPath>
 #include <QPainter>
 #include <QHash>
 
@@ -62,6 +66,150 @@ void GraphView::rebuildGraphics()
     }
 
     scene->setSceneRect(scene->itemsBoundingRect().adjusted(-200, -200, 200, 200));
+}
+
+QString GraphView::pinAtScene(const QPointF &scenePos) const
+{
+    const QList<QGraphicsItem *> items = scene->items(scenePos);
+    for (QGraphicsItem *it : items) {
+        if (auto *ni = dynamic_cast<NodeItem *>(it)) {
+            const QString pin = ni->pinAt(ni->mapFromScene(scenePos));
+            if (!pin.isEmpty())
+                return pin;
+        }
+    }
+    // Fall back to a small search around the point (connectors sit on node edges).
+    const QList<QGraphicsItem *> near =
+        scene->items(QRectF(scenePos.x() - 8, scenePos.y() - 8, 16, 16));
+    for (QGraphicsItem *it : near) {
+        if (auto *ni = dynamic_cast<NodeItem *>(it)) {
+            const QString pin = ni->pinAt(ni->mapFromScene(scenePos));
+            if (!pin.isEmpty())
+                return pin;
+        }
+    }
+    return QString();
+}
+
+QPointF GraphView::pinScenePos(const QString &pinId) const
+{
+    for (QGraphicsItem *it : scene->items()) {
+        if (auto *ni = dynamic_cast<NodeItem *>(it)) {
+            for (const GraphPin &p : ni->graphNode().pins) {
+                if (p.id == pinId)
+                    return ni->mapToScene(ni->pinAnchorLocal(pinId));
+            }
+        }
+    }
+    return QPointF();
+}
+
+void GraphView::endDrag()
+{
+    if (rubber) { scene->removeItem(rubber); delete rubber; rubber = nullptr; }
+    dragging = false;
+    dragFromPin.clear();
+    viewport()->setCursor(Qt::ArrowCursor);
+    setDragMode(QGraphicsView::ScrollHandDrag);
+}
+
+static GraphEdits::DragMode modeFor(const GraphEdits::PinRef &ref, Qt::KeyboardModifiers mods)
+{
+    using M = GraphEdits::DragMode;
+    if (ref.isSource())
+        return (mods & Qt::ControlModifier) ? M::Rehome : M::Connect;
+    // sink
+    if (mods & Qt::ShiftModifier)   return M::Copy;
+    if (mods & Qt::ControlModifier) return M::Move;
+    return M::Connect;
+}
+
+void GraphView::mousePressEvent(QMouseEvent *event)
+{
+    if (event->button() == Qt::LeftButton) {
+        if (dragging)
+            endDrag(); // cancel any stuck/active drag before starting a new one
+        const QPointF scenePos = mapToScene(event->pos());
+        const QString pin = pinAtScene(scenePos);
+        if (!pin.isEmpty()) {
+            GraphEdits::PinRef ref = GraphEdits::parsePin(patch, pin);
+            dragMode = modeFor(ref, event->modifiers());
+            dragFromPin = pin;
+            dragFromScenePos = pinScenePos(pin);
+            dragging = true;
+            setDragMode(QGraphicsView::NoDrag); // suspend pan while wiring
+            rubber = new QGraphicsPathItem();
+            QPen pen(QColor(255, 255, 255, 200));
+            pen.setWidthF(1.5);
+            pen.setStyle(Qt::DashLine);
+            rubber->setPen(pen);
+            rubber->setZValue(10);
+            scene->addItem(rubber);
+            event->accept();
+            return;
+        }
+    }
+    QGraphicsView::mousePressEvent(event);
+}
+
+void GraphView::mouseMoveEvent(QMouseEvent *event)
+{
+    if (dragging) {
+        const QPointF scenePos = mapToScene(event->pos());
+        const QString target = pinAtScene(scenePos);
+        QPainterPath path;
+        path.moveTo(dragFromScenePos);
+        path.lineTo(scenePos);
+        rubber->setPath(path);
+
+        const bool ok = !target.isEmpty()
+                        && GraphEdits::isValidDrop(patch, dragFromPin, target, dragMode);
+        viewport()->setCursor(target.isEmpty() ? Qt::ArrowCursor
+                              : ok ? Qt::PointingHandCursor : Qt::ForbiddenCursor);
+        event->accept();
+        return;
+    }
+    QGraphicsView::mouseMoveEvent(event);
+}
+
+void GraphView::mouseReleaseEvent(QMouseEvent *event)
+{
+    if (dragging && event->button() == Qt::LeftButton) {
+        const QPointF scenePos = mapToScene(event->pos());
+        const QString target = pinAtScene(scenePos);
+        const QString from = dragFromPin;
+        const GraphEdits::DragMode mode = dragMode;
+
+        // tear down preview first
+        endDrag();
+
+        if (!target.isEmpty() && GraphEdits::isValidDrop(patch, from, target, mode)) {
+            bool ok = false;
+            QString msg;
+            switch (mode) {
+            case GraphEdits::DragMode::Connect:
+                ok = GraphEdits::connectPins(patch, from, target); msg = tr("connect wire"); break;
+            case GraphEdits::DragMode::Copy:
+                ok = GraphEdits::copyWire(patch, from, target);    msg = tr("copy wire"); break;
+            case GraphEdits::DragMode::Move:
+                ok = GraphEdits::moveWire(patch, from, target);    msg = tr("move wire"); break;
+            case GraphEdits::DragMode::Rehome:
+                ok = GraphEdits::rehomeWires(patch, from, target); msg = tr("re-home wires"); break;
+            }
+            commitEdit(ok, msg);
+        }
+        event->accept();
+        return;
+    }
+    QGraphicsView::mouseReleaseEvent(event);
+}
+
+void GraphView::commitEdit(bool ok, const QString &message)
+{
+    if (!ok)
+        return;
+    patch->commit(message);
+    rebuildGraphics();
 }
 
 void GraphView::wheelEvent(QWheelEvent *event)
