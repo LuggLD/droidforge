@@ -28,3 +28,32 @@ input `I1`, so the true signal path is `producer → N1 → (internally) → I1 
 readers of I1`. Modeling that internal link would let the graph show the flow
 as N→I (the intended direction) and would give a read of `N1` a real endpoint
 (today such a read would resolve to a non-existent pin and be skipped).
+
+## Design-spec deltas for M2/M3 to reconcile
+
+The overall design spec `specs/2026-06-08-node-graph-editor-design.md` predates
+the 2026-06-09 HW-register & layout work. Its M2 (editing) and M3 (persistence)
+sections describe a model that has since changed. **Trust the current code over
+that spec** when writing the M2/M3 plans, and reconcile these points:
+
+- **§6 Hardware nodes** says sources are `I,N,P,B,E,S` (left) and sinks
+  `O,G,L,R` (right), with "Master inputs (`I,N`)" on the left. Now superseded:
+  classification comes from `Patch::registerIsOutputOnly()`; `N` is an **output**
+  (on Master-out, right), so sources are `I,P,B,E,S` and outputs are
+  `N,O,G,L,R,X`. Output nodes carry a write pin (`hw.<reg>`, left) **and** a read
+  pin (`hw.<reg>.read`, right) — except `N`, which is write-only.
+- **§7 Connections** — the producer/consumer storage table is still correct, but
+  it predates output read-back. **M2 connection editing** must handle dragging
+  *from* an output node's read pin (`hw.<reg>.read`) to a circuit input (stores
+  `input primary atom = that register`), in addition to the source→input and
+  output→sink gestures. Read vs. write pins on the same hardware node are now a
+  real distinction the edit logic must respect.
+- **§8 + "Open implementation questions"** guessed auto-layout would be "layered
+  left-to-right by signal flow." That was **rejected** (cross-section flow is
+  bidirectional/unreliable). Shipped instead: per-section grid packing with
+  source hardware pinned left and output hardware right, section bands stacked
+  vertically. **M3 is unaffected** — node-position persistence keys on node ids
+  (`c<S>.<C>`, `hw.<key>`), which are unchanged — but the spec's auto-layout
+  description is stale.
+- **V1 scope** in the spec bundled "auto-layout with opt-in `.ini`-comment
+  persistence." In practice this split: auto-layout shipped; persistence is M3.
