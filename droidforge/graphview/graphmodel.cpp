@@ -82,23 +82,53 @@ void addOutputPin(GraphNode &node, int s, int c, const QString &circuit, const J
     node.pins.append(pin);
 }
 
-// Keep in sync with Patch::registerIsOutputOnly() in patch.cpp.
-bool isSourceRegisterType(register_type_t t) {
-    return t == REGISTER_INPUT || t == REGISTER_NORMALIZE
-        || t == REGISTER_POT   || t == REGISTER_BUTTON
-        || t == REGISTER_ENCODER || t == REGISTER_SWITCH;
+// Read-pin id for a register. Output registers expose a distinct read pin
+// (hw.<reg>.read) on their output node; read-only inputs are read straight
+// from their single source pin (hw.<reg>).
+QString hwReadPinId(const AtomRegister &reg, const Patch *patch)
+{
+    const QString base = QString(kHwPrefix) + reg.toString();
+    return patch->registerIsOutputOnly(reg) ? base + ".read" : base;
 }
 
-void addHwPin(GraphNode &node, const AtomRegister &reg, Patch *patch, bool source)
+// Append the pin(s) for one hardware register to a node:
+//  - read-only input  -> one read pin (Out)          id: hw.<reg>
+//  - output register  -> write pin (In)  + read pin (Out)
+//                        ids: hw.<reg>  and  hw.<reg>.read
+void appendRegisterPins(GraphNode &node, const AtomRegister &reg, Patch *patch)
 {
-    GraphPin pin;
-    pin.id        = QString(kHwPrefix) + reg.toString();
-    pin.label     = reg.toString();
-    pin.direction = source ? GraphPinDirection::Out : GraphPinDirection::In;
-    pin.portKind  = GraphPortKind::Signal;
-    pin.role      = GraphPinRole::Simple;
-    pin.used      = patch->registerUsed(reg);
-    node.pins.append(pin);
+    const QString base = QString(kHwPrefix) + reg.toString();
+    const bool used = patch->registerUsed(reg);
+
+    if (!patch->registerIsOutputOnly(reg)) {
+        GraphPin p;
+        p.id        = base;
+        p.label     = reg.toString();
+        p.direction = GraphPinDirection::Out;
+        p.portKind  = GraphPortKind::Signal;
+        p.role      = GraphPinRole::Simple;
+        p.used      = used;
+        node.pins.append(p);
+        return;
+    }
+
+    GraphPin w;
+    w.id        = base;
+    w.label     = reg.toString();
+    w.direction = GraphPinDirection::In;
+    w.portKind  = GraphPortKind::Signal;
+    w.role      = GraphPinRole::Simple;
+    w.used      = used;
+    node.pins.append(w);
+
+    GraphPin r;
+    r.id        = hwReadPinId(reg, patch);   // base + ".read"
+    r.label     = QString();                 // labelled by the write pin's row
+    r.direction = GraphPinDirection::Out;
+    r.portKind  = GraphPortKind::Signal;
+    r.role      = GraphPinRole::Simple;
+    r.used      = used;
+    node.pins.append(r);
 }
 
 void addHardwareNodes(GraphDescription &g, const Patch *patchConst)
@@ -124,8 +154,8 @@ void addHardwareNodes(GraphDescription &g, const Patch *patchConst)
         unsigned count = the_firmware->numGlobalRegisters(t);
         for (unsigned n = 1; n <= count; n++) {
             AtomRegister reg(t, 0, 0, n);
-            bool source = isSourceRegisterType(t);
-            addHwPin(source ? masterIn : masterOut, reg, patch, source);
+            appendRegisterPins(patch->registerIsOutputOnly(reg) ? masterOut : masterIn,
+                               reg, patch);
         }
     }
     if (!masterIn.pins.isEmpty())  g.nodes.append(masterIn);
@@ -155,12 +185,12 @@ void addHardwareNodes(GraphDescription &g, const Patch *patchConst)
         for (register_type_t t : ctrlSource) {
             unsigned count = the_firmware->numControllerRegisters(ctrlName, t);
             for (unsigned n = 1; n <= count; n++)
-                addHwPin(controls, AtomRegister(t, static_cast<unsigned>(ci + 1), 0, n), patch, true);
+                appendRegisterPins(controls, AtomRegister(t, static_cast<unsigned>(ci + 1), 0, n), patch);
         }
         for (register_type_t t : ctrlSink) {
             unsigned count = the_firmware->numControllerRegisters(ctrlName, t);
             for (unsigned n = 1; n <= count; n++)
-                addHwPin(leds, AtomRegister(t, static_cast<unsigned>(ci + 1), 0, n), patch, false);
+                appendRegisterPins(leds, AtomRegister(t, static_cast<unsigned>(ci + 1), 0, n), patch);
         }
 
         if (!controls.pins.isEmpty()) g.nodes.append(controls);
