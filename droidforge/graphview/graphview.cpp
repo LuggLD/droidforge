@@ -199,10 +199,8 @@ void GraphView::mouseMoveEvent(QMouseEvent *event)
         const QPointF scenePos = mapToScene(event->pos());
         const QString target = pinAtScene(scenePos);
         QPainterPath path;
-        for (const QPointF &anchor : dragAnchors) {
-            path.moveTo(anchor);
-            path.lineTo(scenePos);
-        }
+        for (const QPointF &anchor : dragAnchors)
+            path.addPath(WireItem::curve(anchor, scenePos));
         rubber->setPath(path);
 
         const bool ok = !target.isEmpty()

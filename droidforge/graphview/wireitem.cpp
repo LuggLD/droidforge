@@ -18,7 +18,7 @@ static qreal tangentX(const QPointF &from, const QPointF &to)
     return qMax(40.0, dx * 0.45);
 }
 
-static QPainterPath cubicPath(const QPointF &from, const QPointF &to)
+QPainterPath WireItem::curve(const QPointF &from, const QPointF &to)
 {
     qreal tx = tangentX(from, to);
     QPainterPath path;
@@ -60,14 +60,14 @@ QPainterPath WireItem::shape() const
     if (!valid) return QPainterPath();
     QPainterPathStroker stroker;
     stroker.setWidth(WIRE_HIT_HALF_WIDTH * 2.0); // generous click target
-    return stroker.createStroke(cubicPath(fromPt, toPt));
+    return stroker.createStroke(curve(fromPt, toPt));
 }
 
 void WireItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *)
 {
     if (!valid) return;
 
-    QPainterPath path = cubicPath(fromPt, toPt);
+    QPainterPath path = curve(fromPt, toPt);
 
     QPen pen;
     if (wire.isCable) {

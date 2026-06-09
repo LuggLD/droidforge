@@ -18,6 +18,9 @@ public:
     // from/to are scene-space; pass QPointF() to flag a missing endpoint.
     explicit WireItem(const GraphWire &w, const QPointF &from, const QPointF &to);
     const GraphWire &graphWire() const { return wire; }
+    // The cubic Bézier used to draw a wire between two scene points. Shared so
+    // the drag preview can curve identically to committed wires.
+    static QPainterPath curve(const QPointF &from, const QPointF &to);
     QRectF boundingRect() const override;
     QPainterPath shape() const override;
     void paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget) override;
