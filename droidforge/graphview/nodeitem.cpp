@@ -2,6 +2,7 @@
 #include <QPainter>
 #include <QPainterPath>
 #include <QFontMetrics>
+#include <cmath>
 
 // ─── Color helpers ────────────────────────────────────────────────────────────
 // We use hand-picked QColors that are legible on any background. These are
@@ -170,6 +171,24 @@ QPointF NodeItem::pinAnchorLocal(const QString &pinId) const
 {
     if (layoutDirty) doLayout();
     return pinAnchors.value(pinId, QPointF());
+}
+
+QString NodeItem::pinAt(const QPointF &localPos) const
+{
+    if (layoutDirty) doLayout();
+    // Hit radius: a bit larger than the drawn connector for comfortable grabbing.
+    constexpr qreal HIT_RADIUS = CONNECTOR_RADIUS + 5.0;
+    QString best;
+    qreal bestDist = HIT_RADIUS;
+    for (auto it = pinAnchors.cbegin(); it != pinAnchors.cend(); ++it) {
+        const QPointF d = it.value() - localPos;
+        const qreal dist = std::hypot(d.x(), d.y());
+        if (dist <= bestDist) {
+            bestDist = dist;
+            best = it.key();
+        }
+    }
+    return best;
 }
 
 QRectF NodeItem::boundingRect() const

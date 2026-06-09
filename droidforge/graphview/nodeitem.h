@@ -36,6 +36,10 @@ public:
     // Returns anchor in LOCAL item coordinates; call mapToScene() for scene coords.
     QPointF pinAnchorLocal(const QString &pinId) const;
 
+    // Returns the id of the pin whose connector contains localPos (within a
+    // generous hit radius), or an empty string. localPos is in item coords.
+    QString pinAt(const QPointF &localPos) const;
+
     QRectF boundingRect() const override;
     void paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget) override;
 };
