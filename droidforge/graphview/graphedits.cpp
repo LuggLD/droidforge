@@ -354,4 +354,33 @@ bool disconnectPin(Patch *patch, const QString &pin)
     return true;
 }
 
+bool copyWire(Patch *patch, const QString &fromSink, const QString &toSink)
+{
+    const QString src = getConnectedSource(patch, fromSink);
+    if (src.isEmpty())
+        return false;
+    return connectPins(patch, src, toSink);
+}
+
+bool moveWire(Patch *patch, const QString &fromSink, const QString &toSink)
+{
+    if (!copyWire(patch, fromSink, toSink))
+        return false;
+    clearJackAtom(patch, parsePin(patch, fromSink));
+    return true;
+}
+
+bool rehomeWires(Patch *patch, const QString &fromSource, const QString &toSource)
+{
+    const PinRef from = parsePin(patch, fromSource);
+    if (!from.isSource())
+        return false;
+    const QStringList sinks = getConnectedSinks(patch, fromSource); // capture before mutating
+    for (const QString &sinkPin : sinks)
+        connectPins(patch, toSource, sinkPin);
+    if (from.kind == PinRef::CircuitOutput)
+        clearJackAtom(patch, from);
+    return true;
+}
+
 } // namespace GraphEdits
