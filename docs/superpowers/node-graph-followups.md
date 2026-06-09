@@ -19,6 +19,19 @@ The scale and offset rows should be visually subordinate to the primary —
 e.g. slightly indented — so the grouping reads as "this input, times this,
 plus this." (Operator note, 2026-06-09.)
 
+## Tech debt
+
+### Pin-id grammar is duplicated (construction vs parsing)
+The pin-id string grammar — `c<S>.<C>.<jack>.[p|s|o|out]`, `hw.<reg>`,
+`hw.<reg>.read` — is encoded independently in two places: `graphmodel.cpp`
+*constructs* ids (`pinId`, `inputAtomSuffix`, `hwReadPinId`, `kHwPrefix`), and
+`graphedits.cpp` *parses* them back (`parsePin`) and re-constructs some
+(`inputPinId`, `findOutputHolding`). They agree today, but nothing enforces it —
+a change to one side would silently break wiring. Hoist the grammar (construct +
+parse) into one shared helper (e.g. a small `pinid.{h,cpp}` or additions to
+`graphmodeltypes.h`) used by both. Surfaced by the final wiring review,
+2026-06-09. Low severity (no live bug), worth doing before the grammar grows.
+
 ## Model / correctness (deferred from the 2026-06-09 HW-register spec)
 
 ### Model N's internal link to its input

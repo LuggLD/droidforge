@@ -62,7 +62,7 @@ Two units, mirroring M1's pure-logic / GUI split.
 
 ### `GraphEdits` — pure connection logic (GUI-free, TDD'd)
 
-New `droidforge/graphview/graphedits.{h,cpp}`. Operates on `Patch*` + pin-id strings, performs the atom mutations, and commits. No Qt GUI dependency. Functions are verbs:
+New `droidforge/graphview/graphedits.{h,cpp}`. Operates on `Patch*` + pin-id strings and performs the atom mutations, returning a `bool`. **It does not commit** — `GraphView` calls `patch->commit()` once per gesture (see below). No Qt GUI *or* edit-engine dependency, so it is unit-tested on a plain `Patch`. Functions are verbs:
 
 | Function | Behavior |
 |---|---|
@@ -85,7 +85,7 @@ New `droidforge/graphview/graphedits.{h,cpp}`. Operates on `Patch*` + pin-id str
 3. **Orphan cables:** removing a cable's last reader leaves the producing output's cable atom in place (a producer with no readers). This is valid and matches list-editor behavior; no garbage collection.
 4. **Producerless cable:** dissolving via a sink, or `disconnectWire` on a circuit→circuit wire, can leave readers referencing a cable with no producer. Also valid (reads as 0/undefined); the existing `PatchProblem` machinery may flag it — rendering badges is a *later* milestone.
 
-Every mutating function ends in `patch->commit(<message>)`, producing one undo step.
+Each gesture produces exactly one `patch->commit(<message>)` — invoked by `GraphView::commitEdit` after a successful `GraphEdits` mutation, **not** by `GraphEdits` itself — producing one undo step. (Implemented refinement over an earlier draft that had `GraphEdits` commit: keeping the commit in the view leaves the logic layer pure and edit-engine-free.)
 
 ### `GraphView` — gesture translation (GUI, app-verified)
 
