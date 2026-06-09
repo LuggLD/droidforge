@@ -12,6 +12,9 @@
 #include <QPainterPath>
 #include <QPainter>
 #include <QHash>
+#include <QKeyEvent>
+#include <QMenu>
+#include <QContextMenuEvent>
 
 GraphView::GraphView(PatchEditEngine *patch, QWidget *parent)
     : QGraphicsView(parent), PatchView(patch), scene(new QGraphicsScene(this))
@@ -129,6 +132,14 @@ void GraphView::mousePressEvent(QMouseEvent *event)
     if (event->button() == Qt::LeftButton) {
         if (dragging)
             endDrag(); // cancel any stuck/active drag before starting a new one
+        if (event->modifiers() & Qt::AltModifier) {
+            const QString pin = pinAtScene(mapToScene(event->pos()));
+            if (!pin.isEmpty()) {
+                commitEdit(GraphEdits::disconnectPin(patch, pin), tr("disconnect all"));
+                event->accept();
+                return;
+            }
+        }
         const QPointF scenePos = mapToScene(event->pos());
         const QString pin = pinAtScene(scenePos);
         if (!pin.isEmpty()) {
@@ -147,6 +158,16 @@ void GraphView::mousePressEvent(QMouseEvent *event)
             scene->addItem(rubber);
             event->accept();
             return;
+        }
+        const QPointF scp = mapToScene(event->pos());
+        for (QGraphicsItem *it : scene->items(scp)) {
+            if (auto *wi = dynamic_cast<WireItem *>(it)) {
+                scene->clearSelection();
+                wi->setSelected(true);
+                viewport()->update();
+                event->accept();
+                return;
+            }
         }
     }
     QGraphicsView::mousePressEvent(event);
@@ -210,6 +231,96 @@ void GraphView::commitEdit(bool ok, const QString &message)
         return;
     patch->commit(message);
     rebuildGraphics();
+}
+
+void GraphView::keyPressEvent(QKeyEvent *event)
+{
+    if (event->key() == Qt::Key_Delete || event->key() == Qt::Key_Backspace) {
+        const QList<QGraphicsItem *> sel = scene->selectedItems();
+        bool any = false;
+        for (QGraphicsItem *it : sel) {
+            if (auto *wi = dynamic_cast<WireItem *>(it)) {
+                const GraphWire &w = wi->graphWire();
+                if (GraphEdits::disconnectWire(patch, w.fromPinId, w.toPinId))
+                    any = true;
+            }
+        }
+        if (any) {
+            commitEdit(true, tr("delete wire"));
+            event->accept();
+            return;
+        }
+    }
+    if (event->key() == Qt::Key_Escape && dragging) {
+        endDrag(); // cancel an in-progress wire drag
+        event->accept();
+        return;
+    }
+    QGraphicsView::keyPressEvent(event);
+}
+
+void GraphView::contextMenuEvent(QContextMenuEvent *event)
+{
+    if (dragging) { // never open a menu mid-drag (would strand the rubber-band)
+        event->ignore();
+        return;
+    }
+    const QPointF scenePos = mapToScene(event->pos());
+
+    // Wire under the cursor? Offer Delete.
+    for (QGraphicsItem *it : scene->items(scenePos)) {
+        if (auto *wi = dynamic_cast<WireItem *>(it)) {
+            const GraphWire w = wi->graphWire();
+            QMenu menu(this);
+            QAction *del = menu.addAction(tr("Delete connection"));
+            if (menu.exec(event->globalPos()) == del)
+                commitEdit(GraphEdits::disconnectWire(patch, w.fromPinId, w.toPinId), tr("delete wire"));
+            event->accept();
+            return;
+        }
+    }
+
+    // Pin under the cursor? Offer per-wire + "Disconnect all".
+    const QString pin = pinAtScene(scenePos);
+    if (!pin.isEmpty()) {
+        GraphEdits::PinRef ref = GraphEdits::parsePin(patch, pin);
+        QMenu menu(this);
+        QList<QPair<QString, QString>> targets; // (label, otherPin) for disconnectWire
+        if (ref.isSource()) {
+            const QStringList sinks = GraphEdits::getConnectedSinks(patch, pin);
+            for (const QString &s : sinks)
+                targets.append({tr("Disconnect from %1").arg(s), s});
+        } else {
+            const QString src = GraphEdits::getConnectedSource(patch, pin);
+            if (!src.isEmpty())
+                targets.append({tr("Disconnect from %1").arg(src), src});
+        }
+        QList<QAction *> acts;
+        for (const auto &t : targets)
+            acts.append(menu.addAction(t.first));
+        QAction *all = nullptr;
+        if (!targets.isEmpty()) {
+            menu.addSeparator();
+            all = menu.addAction(tr("Disconnect all"));
+        }
+        if (menu.isEmpty()) { event->accept(); return; }
+        QAction *chosen = menu.exec(event->globalPos());
+        if (chosen) {
+            bool ok = false;
+            if (chosen == all) {
+                ok = GraphEdits::disconnectPin(patch, pin);
+            } else {
+                const int idx = acts.indexOf(chosen);
+                if (idx >= 0)
+                    ok = GraphEdits::disconnectWire(patch, pin, targets[idx].second);
+            }
+            commitEdit(ok, tr("disconnect"));
+        }
+        event->accept();
+        return;
+    }
+
+    QGraphicsView::contextMenuEvent(event);
 }
 
 void GraphView::wheelEvent(QWheelEvent *event)

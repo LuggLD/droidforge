@@ -18,6 +18,8 @@ protected:
     void mousePressEvent(QMouseEvent *) override;
     void mouseMoveEvent(QMouseEvent *) override;
     void mouseReleaseEvent(QMouseEvent *) override;
+    void keyPressEvent(QKeyEvent *) override;
+    void contextMenuEvent(QContextMenuEvent *) override;
 private:
     // Returns the pin id under a scene position, or empty. Scans NodeItems.
     QString pinAtScene(const QPointF &scenePos) const;
