@@ -100,6 +100,22 @@ static QList<PinGroup> buildGroups(const QList<const GraphPin *> &pins)
     return groups;
 }
 
+qreal NodeItem::heightFor(const GraphNode &n)
+{
+    QList<const GraphPin *> inPins, outPins;
+    for (const auto &p : n.pins) {
+        if (p.direction == GraphPinDirection::In)
+            inPins.append(&p);
+        else
+            outPins.append(&p);
+    }
+    qreal inH = 0;
+    for (const auto &g : buildGroups(inPins))  inH  += g.height();
+    qreal outH = 0;
+    for (const auto &g : buildGroups(outPins)) outH += g.height();
+    return TITLE_HEIGHT + qMax(inH, outH) + 6.0; // 6px bottom padding
+}
+
 void NodeItem::doLayout() const
 {
     pinAnchors.clear();
@@ -116,16 +132,7 @@ void NodeItem::doLayout() const
     QList<PinGroup> inGroups  = buildGroups(inPins);
     QList<PinGroup> outGroups = buildGroups(outPins);
 
-    // Total height for each side
-    qreal inH = 0;
-    for (const auto &g : inGroups)  inH  += g.height();
-    qreal outH = 0;
-    for (const auto &g : outGroups) outH += g.height();
-
-    qreal bodyH = qMax(inH, outH);
-    qreal totalH = TITLE_HEIGHT + bodyH + 6.0; // 6px bottom padding
-
-    cachedRect = QRectF(0, 0, NODE_WIDTH, totalH);
+    cachedRect = QRectF(0, 0, NODE_WIDTH, heightFor(node));
 
     // Left side (inputs)
     qreal y = TITLE_HEIGHT;

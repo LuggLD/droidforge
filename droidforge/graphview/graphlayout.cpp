@@ -1,8 +1,9 @@
 #include "graphlayout.h"
+#include "nodeitem.h"
 #include <QHash>
 
 namespace {
-const double COL_W = 280.0, ROW_H = 160.0, FRAME_PAD = 24.0;
+const double COL_W = 280.0, V_GAP = 30.0, FRAME_PAD = 24.0;
 }
 
 namespace GraphLayout {
@@ -24,27 +25,33 @@ void layout(GraphDescription &g)
         for (const auto &p : n.pins)
             pinOwner.insert(p.id, n.id);
 
-    const int SINK_COL = 1000000;
+    // Node-kind lookup by id (avoids repeated linear findNode() scans below).
+    QHash<QString, GraphNodeKind> kindOf;
+    for (const auto &n : g.nodes)
+        kindOf.insert(n.id, n.kind);
 
-    // Initialise columns.
-    for (const auto &n : g.nodes) {
-        if (n.kind == GraphNodeKind::HardwareSource)
-            g_columns[n.id] = 0;
-        else if (n.kind == GraphNodeKind::HardwareSink)
-            g_columns[n.id] = SINK_COL;
-        else
-            g_columns[n.id] = 1;
-    }
+    // Initialise columns: hardware nodes at 0 (sinks are re-pinned to the far
+    // right at the end), circuits at 1 so they sit right of source hardware.
+    for (const auto &n : g.nodes)
+        g_columns[n.id] = (n.kind == GraphNodeKind::Circuit) ? 1 : 0;
 
-    // Relax along wires (longest-path), capped at (#nodes+1) iterations.
+    // Longest-path relaxation, capped at (#nodes+1) iterations. Only forward
+    // edges into circuits drive layering. We deliberately skip:
+    //   - producers that are sinks: an output register read back as an input
+    //     (e.g. fold.input = O1) is a visual back-edge, not a layer driver, and
+    //     the sink has no meaningful column until it is pinned at the end;
+    //   - consumers that are not circuits: sources stay at column 0, sinks are
+    //     pinned afterwards. Relaxing them would drag hardware out of place.
+    // This keeps every column bounded by the node count regardless of
+    // read-backs, feedback loops, or output-to-normalize writes.
     for (qsizetype iter = 0; iter < g.nodes.size() + 1; iter++) {
         bool changed = false;
         for (const auto &w : g.wires) {
-            QString from = pinOwner.value(w.fromPinId);
-            QString to   = pinOwner.value(w.toPinId);
+            const QString from = pinOwner.value(w.fromPinId);
+            const QString to   = pinOwner.value(w.toPinId);
             if (from.isEmpty() || to.isEmpty()) continue;
-            const GraphNode *toNode = g.findNode(to);
-            if (toNode && toNode->kind == GraphNodeKind::HardwareSink) continue;
+            if (kindOf.value(from) == GraphNodeKind::HardwareSink) continue;
+            if (kindOf.value(to) != GraphNodeKind::Circuit) continue;
             if (g_columns[to] <= g_columns[from]) {
                 g_columns[to] = g_columns[from] + 1;
                 changed = true;
@@ -53,22 +60,23 @@ void layout(GraphDescription &g)
         if (!changed) break;
     }
 
-    // Determine max non-sentinel column, then fix sink columns.
+    // Pin every sink one column past the rightmost non-sink node.
     int maxCol = 0;
-    for (auto it = g_columns.begin(); it != g_columns.end(); ++it)
-        if (it.value() != SINK_COL)
-            maxCol = qMax(maxCol, it.value());
+    for (const auto &n : g.nodes)
+        if (n.kind != GraphNodeKind::HardwareSink)
+            maxCol = qMax(maxCol, g_columns.value(n.id, 0));
     for (const auto &n : g.nodes)
         if (n.kind == GraphNodeKind::HardwareSink)
             g_columns[n.id] = maxCol + 1;
 
-    // Assign positions: stack nodes within each column.
-    QHash<int,int> rowInCol;
+    // Assign positions: stack nodes within each column by their actual heights
+    // plus a fixed gap, so tall nodes (many pins) never overlap their neighbours.
+    QHash<int,double> yInCol;
     for (auto &n : g.nodes) {
         int col = g_columns.value(n.id, 0);
-        int row = rowInCol.value(col, 0);
-        rowInCol[col] = row + 1;
-        n.pos = QPointF(col * COL_W, row * ROW_H);
+        double y = yInCol.value(col, 0.0);
+        n.pos = QPointF(col * COL_W, y);
+        yInCol[col] = y + NodeItem::heightFor(n) + V_GAP;
     }
 
     // Compute frame rects bounding member nodes.
@@ -80,8 +88,8 @@ void layout(GraphDescription &g)
             if (!n) continue;
             x0 = qMin(x0, n->pos.x());
             y0 = qMin(y0, n->pos.y());
-            x1 = qMax(x1, n->pos.x() + 220.0);
-            y1 = qMax(y1, n->pos.y() + 120.0);
+            x1 = qMax(x1, n->pos.x() + NodeItem::NODE_WIDTH);
+            y1 = qMax(y1, n->pos.y() + NodeItem::heightFor(*n));
         }
         f.rect = QRectF(x0 - FRAME_PAD, y0 - FRAME_PAD,
                         (x1 - x0) + 2 * FRAME_PAD,

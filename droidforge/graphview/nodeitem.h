@@ -28,6 +28,11 @@ public:
     explicit NodeItem(const GraphNode &n);
     const GraphNode &graphNode() const { return node; }
 
+    // Total painted height of a node with these pins. Shared with GraphLayout so
+    // vertical stacking matches the real geometry (no overlap). Single source of
+    // truth for node height.
+    static qreal heightFor(const GraphNode &n);
+
     // Returns anchor in LOCAL item coordinates; call mapToScene() for scene coords.
     QPointF pinAnchorLocal(const QString &pinId) const;
 

@@ -66,6 +66,14 @@ void GraphView::rebuildGraphics()
 
 void GraphView::wheelEvent(QWheelEvent *event)
 {
-    double f = event->angleDelta().y() > 0 ? 1.15 : 1.0/1.15;
+    // Clamp the cumulative zoom so the view can never shrink to nothing (or
+    // blow up). Without this, repeated zoom-out drove the scale toward 0 and
+    // the graph became unrecoverable.
+    constexpr double MIN_SCALE = 0.05, MAX_SCALE = 4.0;
+    const double current = transform().m11();
+    double f = event->angleDelta().y() > 0 ? 1.15 : 1.0 / 1.15;
+    const double target = current * f;
+    if (target < MIN_SCALE)      f = MIN_SCALE / current;
+    else if (target > MAX_SCALE) f = MAX_SCALE / current;
     scale(f, f);
 }
