@@ -67,18 +67,6 @@ GraphPortKind portKindOfPin(const Patch *patch, const PinRef &ref)
     return GraphPortKind::Signal; // all hardware registers are signal
 }
 
-// Does a source pin currently hold a net (a producer atom)?
-static bool sourceHasNet(const Patch *patch, const PinRef &ref)
-{
-    if (ref.kind == PinRef::CircuitOutput) {
-        const Circuit *circ = patch->section(ref.section)->circuit(ref.circuit);
-        const JackAssignment *ja = circ->findJack(ref.jack);
-        return ja && ja->atomAt(1) != nullptr;
-    }
-    // Hardware sources always "exist" but can't be re-homed onto (see isValidDrop).
-    return true;
-}
-
 bool isValidDrop(const Patch *patch, const QString &fromPin,
                  const QString &toPin, DragMode mode)
 {
@@ -100,11 +88,12 @@ bool isValidDrop(const Patch *patch, const QString &fromPin,
             return false;
         break;
     case DragMode::Rehome:
-        // Re-home moves a producer onto another *circuit output* that is empty.
+        // Re-home moves a producer's whole net onto another circuit output. If
+        // the target already produces a net, the two MERGE: every sink of both
+        // sources ends up reading the target. (Target must be a re-assignable
+        // producer, i.e. a circuit output, not a hardware source.)
         if (!(a.isSource() && b.kind == PinRef::CircuitOutput))
             return false;
-        if (sourceHasNet(patch, b))
-            return false; // edge #2: never clobber an occupied source
         break;
     }
 
