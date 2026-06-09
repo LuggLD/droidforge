@@ -57,7 +57,20 @@ the wire visually from the grabbed output to the input while the model still
 stores `O1` (treat `hw.O1.read` and the producing output as visual aliases);
 (b) disallow dragging from a register-driving output to an input, requiring the
 read to start from the read pin; (c) accept current behavior with a visual hint
-linking the producing output to its `*.read` pin. Operator note, 2026-06-10.
+linking the producing output to its `*.read` pin; (d) operator's idea — when a
+circuit output is wired to a register *and* to other circuits, auto-insert a
+"copy" circuit "docked" to the output register, so the producing output feeds a
+real cable consumed by both the copy→register and the other circuits, making the
+fan-out explicit instead of routing reads through the hardware read pin.
+Operator note, 2026-06-10.
+
+### Graph wiring doesn't trigger rack auto-show/hide of X7 and G8s
+With "only show X7 if needed by the current patch" enabled, connecting/
+disconnecting X7 wires in the **node graph** does not add/remove the X7 from the
+rack the way the list editor does; same for automatic adding/removing of G8
+expanders as their gates come into / go out of use. The graph mutates the model
+but doesn't run whatever rack-reconciliation the list-editor path triggers. Ties
+into the rack-accurate hardware-node work above. Operator note, 2026-06-10.
 
 ## Tech debt
 
