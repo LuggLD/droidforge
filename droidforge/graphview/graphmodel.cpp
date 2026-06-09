@@ -161,7 +161,15 @@ void addHardwareNodes(GraphDescription &g, const Patch *patchConst)
     for (register_type_t t : globalTypes) {
         unsigned count = the_firmware->numGlobalRegisters(t);
         for (unsigned n = 1; n <= count; n++) {
-            AtomRegister reg(t, 0, 0, n);
+            // Gates need the same normalization the parser applies: a bare gate
+            // 1..8 lives on the first G8 expander (g8=1, "G1.n"); 9.. are X7
+            // gates (g8=0, "Gn"). Building them as AtomRegister(t,0,0,n) would
+            // yield "Gn" for 1..8, whose id never matches the "G1.n" a wire
+            // carries — so the wire would be silently dropped. Round-trip the
+            // string form to get the canonical register.
+            AtomRegister reg = (t == REGISTER_GATE)
+                ? AtomRegister(QString(QChar(t)) + QString::number(n))
+                : AtomRegister(t, 0, 0, n);
             appendRegisterPins(patch->registerIsOutputOnly(reg) ? masterOut : masterIn,
                                reg, patch);
         }
