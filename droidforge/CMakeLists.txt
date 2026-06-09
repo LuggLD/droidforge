@@ -283,6 +283,8 @@ set(PROJECT_SOURCES
     graphview/nodeitem.cpp
     graphview/wireitem.h
     graphview/wireitem.cpp
+    graphview/graphedits.h
+    graphview/graphedits.cpp
     graphview/sectionframeitem.h
     graphview/sectionframeitem.cpp
 )
