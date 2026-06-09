@@ -95,6 +95,10 @@ QString hwReadPinId(const AtomRegister &reg, const Patch *patch)
 //  - read-only input  -> one read pin (Out)          id: hw.<reg>
 //  - output register  -> write pin (In)  + read pin (Out)
 //                        ids: hw.<reg>  and  hw.<reg>.read
+// Exception: normalize (N) registers get a write pin only. You write N to set
+// the normalized value, but you read the corresponding *input* (I), never N
+// directly — so a read pin on N would be a hollow connector that misreads as an
+// input<->N link. (Modeling N's internal link to its input is deferred.)
 void appendRegisterPins(GraphNode &node, const AtomRegister &reg, Patch *patch)
 {
     const QString base = QString(kHwPrefix) + reg.toString();
@@ -120,6 +124,9 @@ void appendRegisterPins(GraphNode &node, const AtomRegister &reg, Patch *patch)
     w.role      = GraphPinRole::Simple;
     w.used      = used;
     node.pins.append(w);
+
+    if (reg.getRegisterType() == REGISTER_NORMALIZE)
+        return;
 
     GraphPin r;
     r.id        = hwReadPinId(reg, patch);   // base + ".read"
