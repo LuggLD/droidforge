@@ -287,6 +287,8 @@ set(PROJECT_SOURCES
     graphview/graphedits.cpp
     graphview/sectionframeitem.h
     graphview/sectionframeitem.cpp
+    graphview/rackmodules.h
+    graphview/rackmodules.cpp
 )
 
 qt_add_executable(${PROJECT_NAME}
