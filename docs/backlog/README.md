@@ -11,6 +11,10 @@ the problem, proposed approaches, and notes.
 
 | Issue | Severity | Status |
 |---|---|---|
+| [Make register interactions feel more wire-like](node-graph-register-interaction-ux.md) | medium | needs design pass |
+| [Assign registers by typing or via the standard parameter dialog](node-graph-assign-registers-by-typing-or-dialog.md) | medium | proposed; next editing milestone |
+| [Create nodes/pins by dropping wires on empty canvas or a node (TiXL-style)](node-graph-create-on-wire-drop.md) | medium | research TiXL first |
+| [List view + node graph: side-by-side use / deeper integration](node-graph-list-view-integration.md) | medium | needs design (Ctrl+G interim shipped) |
 | [Output-register read-back feels wrong in the graph](node-graph-output-register-readback-ux.md) | low–medium | needs design pass |
 | [Copy/Move drop onto a hardware write pin: cursor valid, semantics off](node-graph-copy-move-onto-hw-write-pin.md) | low–medium | recorded 2026-06-10 |
 | [G8 used only via RGB LEDs stays hidden; wire drops](node-graph-g8-visibility-rgb-only.md) | low | recorded 2026-06-10 |
