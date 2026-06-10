@@ -15,6 +15,12 @@ public:
     explicit GraphView(PatchEditEngine *patch, QWidget *parent=nullptr);
 public slots:
     void rebuildGraphics();
+signals:
+    // Emitted after a successful commit. MainWindow routes it into the
+    // UpdateHub so the rack (auto show/hide of X7/G8s), the list editor and
+    // this view itself (rebuild via the hub->rebuildGraphics connection) all
+    // update — the same path list-editor edits take.
+    void patchModified();
 protected:
     void wheelEvent(QWheelEvent *) override;
     void mousePressEvent(QMouseEvent *) override;

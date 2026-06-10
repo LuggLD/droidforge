@@ -119,6 +119,15 @@ MainWindow::MainWindow(QString initialFilename, const Patch *initialRack)
     // Events that we are interested in
     connect(theHub(), &UpdateHub::patchModified, this, &MainWindow::modifyPatch);
     connect(theHub(), &UpdateHub::patchModified, &graphView, &GraphView::rebuildGraphics);
+    connect(&graphView, &GraphView::patchModified, theHub(), &UpdateHub::modifyPatch);
+    // Rebuild the graph when the View menu changes which rack modules exist.
+    // RackView's handlers (connected earlier, in its constructor) write the
+    // QSettings these rebuild from.
+    for (auto a : {ACTION_SHOW_USED_G8s, ACTION_SHOW_ONE_G8, ACTION_SHOW_TWO_G8,
+                   ACTION_SHOW_THREE_G8, ACTION_SHOW_FOUR_G8,
+                   ACTION_SHOW_X7_ON_DEMAND, ACTION_SHOW_X7_ALWAYS})
+        connect(theActions()->action(a), &QAction::triggered,
+                &graphView, &GraphView::rebuildGraphics);
     connect(theHub(), &UpdateHub::sectionSwitched, this, &MainWindow::cursorMoved);
     connect(theHub(), &UpdateHub::cursorMoved, this, &MainWindow::cursorMoved);
 

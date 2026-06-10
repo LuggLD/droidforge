@@ -1,6 +1,7 @@
 #include "graphview.h"
 #include "graphmodel.h"
 #include "graphlayout.h"
+#include "rackmodules.h"
 #include "nodeitem.h"
 #include "wireitem.h"
 #include "sectionframeitem.h"
@@ -15,6 +16,7 @@
 #include <QKeyEvent>
 #include <QMenu>
 #include <QContextMenuEvent>
+#include <QSettings>
 
 GraphView::GraphView(PatchEditEngine *patch, QWidget *parent)
     : QGraphicsView(parent), PatchView(patch), scene(new QGraphicsScene(this))
@@ -28,7 +30,13 @@ GraphView::GraphView(PatchEditEngine *patch, QWidget *parent)
 void GraphView::rebuildGraphics()
 {
     scene->clear();
-    GraphDescription g = GraphModel::describe(patch);
+    // Same settings the rack view honors; written by RackView::showG8s/showX7
+    // before our slot runs (its action connections predate ours).
+    QSettings settings;
+    RackVisibilitySettings vis;
+    vis.showG8s    = settings.value("show_g8s", 0).toInt();
+    vis.x7OnDemand = settings.value("show_x7_on_demand").toBool();
+    GraphDescription g = GraphModel::describe(patch, vis);
     GraphLayout::layout(g);
 
     // Section frames behind everything else
@@ -250,7 +258,7 @@ void GraphView::commitEdit(bool ok, const QString &message)
     if (!ok)
         return;
     patch->commit(message);
-    rebuildGraphics();
+    emit patchModified();   // hub fans out; our rebuild returns via the hub
 }
 
 void GraphView::keyPressEvent(QKeyEvent *event)
