@@ -24,6 +24,11 @@ GraphView::GraphView(PatchEditEngine *patch, QWidget *parent)
     setScene(scene);
     setRenderHint(QPainter::Antialiasing);
     setDragMode(QGraphicsView::ScrollHandDrag);
+    // The graph owns its background. Without this the canvas inherits the OS
+    // palette (white in macOS light mode), where the hand-picked node/wire
+    // colors — designed dark-first like most node editors — become illegible.
+    // Hardcoded rather than COLOR(): the graphshot harness has no colorscheme.
+    scene->setBackgroundBrush(QColor(30, 30, 30));
     rebuildGraphics();
 }
 
