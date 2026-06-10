@@ -82,6 +82,16 @@ bool isValidDrop(const Patch *patch, const QString &fromPin,
     case DragMode::Connect:
         if (!((a.isSource() && b.isSink()) || (a.isSink() && b.isSource())))
             return false;
+        // A hardware write pin can only be driven by a circuit output: the
+        // connection is stored as the register atom on the producing jack, so
+        // a hardware source feeding a hardware sink has no patch
+        // representation (connectPins would refuse — keep the two in sync).
+        {
+            const PinRef &srcRef = a.isSource() ? a : b;
+            const PinRef &snkRef = a.isSink()   ? a : b;
+            if (snkRef.kind == PinRef::HwWrite && srcRef.kind != PinRef::CircuitOutput)
+                return false;
+        }
         break;
     case DragMode::Copy:
     case DragMode::Move:
