@@ -100,14 +100,12 @@ Consequences:
 
 ## Part 4 — Graph commits broadcast through the UpdateHub
 
-All inside `graphview/graphview.cpp`:
+1. `GraphView` gets a `patchModified()` signal (declared in `graphview.h`; no new includes — emitting needs nothing). `commitEdit()` replaces its direct `rebuildGraphics()` call with `emit patchModified()`. The hub then fans out to **every** subscriber: `RackView::modifyPatch()` → `refreshScene()` (the auto-show/hide fix), the list editor, and back to our own `rebuildGraphics` via the existing `mainwindow.cpp:121` connection. One rebuild, no double work, and graph edits now update all views — not just the rack.
+2. The signal→hub connection lives in **our existing M1 integration block** in `mainwindow.cpp` (next to line 121): `connect(&graphView, &GraphView::patchModified, theHub(), &UpdateHub::modifyPatch);`. *Why not self-connect in the GraphView constructor (the earlier idea):* `graphview.cpp` is compiled in the gitignored graphshot harness, and including `mainwindow.h` there would drag in `patchoperator.h → macmidihost.h` — the exact dependency the harness exists to avoid. `mainwindow.cpp`'s graph lines are our own M1 additions, so extending that block stays within the purely-additive rule.
+3. The graph also rebuilds when module visibility changes without a patch edit: in the same block, connect the seven view actions — `ACTION_SHOW_USED_G8s`, `ACTION_SHOW_ONE_G8`, `ACTION_SHOW_TWO_G8`, `ACTION_SHOW_THREE_G8`, `ACTION_SHOW_FOUR_G8`, `ACTION_SHOW_X7_ON_DEMAND`, `ACTION_SHOW_X7_ALWAYS` (`theActions()->action(...)`, `mainwindow.h:92`) — `&QAction::triggered` → `graphView.rebuildGraphics`. Mirrors what the rack does on the same toggles (`rackview.cpp:49–53`, `showG8s`/`showX7`).
+4. **Settings at rebuild time:** `RackView::showG8s`/`showX7` (`rackview.cpp:87–108`) write `QSettings("show_g8s")`/`QSettings("show_x7_on_demand")` *before* any later-connected slot runs (RackView's action connections are made in its constructor, before our MainWindow-body connects). `GraphView::rebuildGraphics` therefore reads both values fresh from `QSettings` to build `RackVisibilitySettings` — no `ACTION` references in `graphview/` at all, which also keeps the harness clean.
 
-1. `GraphView` gets a `patchModified()` signal. In its constructor it self-connects:
-   `connect(this, &GraphView::patchModified, mainWindow->theHub(), &UpdateHub::modifyPatch);`
-2. `commitEdit()` replaces its direct `rebuildGraphics()` call with `emit patchModified()`. The hub then fans out to **every** subscriber: `RackView::modifyPatch()` → `refreshScene()` (the auto-show/hide fix), the list editor, and back to our own `rebuildGraphics` via the existing `mainwindow.cpp:121` connection. One rebuild, no double work, and graph edits now update all views — not just the rack.
-3. The graph also rebuilds when module visibility changes without a patch edit: self-connect the seven view actions — `ACTION_SHOW_USED_G8s`, `ACTION_SHOW_ONE_G8`, `ACTION_SHOW_TWO_G8`, `ACTION_SHOW_THREE_G8`, `ACTION_SHOW_FOUR_G8` (these write the `show_g8s` setting), `ACTION_SHOW_X7_ON_DEMAND`, `ACTION_SHOW_X7_ALWAYS` (`mainwindow.cpp:331–339`, `editoractions.cpp:369+`) — `::triggered` → `rebuildGraphics`. Mirrors what the rack does on the same toggles. Connection order note: the rack/settings handlers update `QSettings("show_g8s")` on these actions; the graph must read settings at rebuild time (it does — rebuild re-queries `visibleRackModules`'s inputs), so ordering doesn't matter.
-
-Preexisting files touched: **none** (the hub→graph connection already exists from M1).
+Preexisting files touched: **none** (mainwindow.cpp/CMakeLists.txt edits extend blocks added by this feature branch in M1).
 
 ## Testing
 
