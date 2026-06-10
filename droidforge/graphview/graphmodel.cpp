@@ -1,4 +1,5 @@
 #include "graphmodel.h"
+#include "rackmodules.h"
 #include "patch.h"
 #include "patchsection.h"
 #include "circuit.h"
@@ -82,102 +83,94 @@ void addOutputPin(GraphNode &node, int s, int c, const QString &circuit, const J
     node.pins.append(pin);
 }
 
-// Read-pin id for a register. Output registers expose a distinct read pin
-// (hw.<reg>.read) on their output node; read-only inputs are read straight
-// from their single source pin (hw.<reg>).
+// Read-pin id for a register: output-only and bidirectional registers expose a
+// distinct read pin (hw.<reg>.read); plain inputs are read straight from their
+// single source pin (hw.<reg>).
 QString hwReadPinId(const AtomRegister &reg, const Patch *patch)
 {
     const QString base = QString(kHwPrefix) + reg.toString();
-    return patch->registerIsOutputOnly(reg) ? base + ".read" : base;
+    return (patch->registerIsOutputOnly(reg) || registerIsBidirectional(patch, reg))
+               ? base + ".read" : base;
 }
 
-// Append the pin(s) for one hardware register to a node:
-//  - read-only input  -> one read pin (Out)          id: hw.<reg>
-//  - output register  -> write pin (In)  + read pin (Out)
-//                        ids: hw.<reg>  and  hw.<reg>.read
-// Exception: normalize (N) registers get a write pin only. You write N to set
-// the normalized value, but you read the corresponding *input* (I), never N
-// directly — so a read pin on N would be a hollow connector that misreads as an
-// input<->N link. (Modeling N's internal link to its input is deferred.)
-void appendRegisterPins(GraphNode &node, const AtomRegister &reg, Patch *patch)
+// Append the pin(s) for one hardware register, routed to the module's source
+// (in) node and/or sink (out) node:
+//  - plain input        -> read pin hw.<reg> (Out) on the in-node
+//  - output register    -> write pin hw.<reg> (In) + read pin hw.<reg>.read
+//                          (Out), both on the out-node. Exception: N gets no
+//                          read pin (you read the corresponding I, never N).
+//  - bidirectional gate -> read pin hw.<reg>.read (Out) on the in-node, write
+//                          pin hw.<reg> (In) on the out-node. Using both at
+//                          once is legal: writing makes the jack an output and
+//                          the read becomes a read-back (manual semantics).
+void appendRegisterPins(GraphNode &inNode, GraphNode &outNode,
+                        const AtomRegister &reg, Patch *patch)
 {
     const QString base = QString(kHwPrefix) + reg.toString();
     const bool used = patch->registerUsed(reg);
 
-    if (!patch->registerIsOutputOnly(reg)) {
+    auto makePin = [&](const QString &id, GraphPinDirection dir) {
         GraphPin p;
-        p.id        = base;
+        p.id        = id;
         p.label     = reg.toString();
-        p.direction = GraphPinDirection::Out;
+        p.direction = dir;
         p.portKind  = GraphPortKind::Signal;
         p.role      = GraphPinRole::Simple;
         p.used      = used;
-        node.pins.append(p);
+        return p;
+    };
+
+    if (registerIsBidirectional(patch, reg)) {
+        inNode.pins.append(makePin(base + ".read", GraphPinDirection::Out));
+        outNode.pins.append(makePin(base, GraphPinDirection::In));
         return;
     }
-
-    GraphPin w;
-    w.id        = base;
-    w.label     = reg.toString();
-    w.direction = GraphPinDirection::In;
-    w.portKind  = GraphPortKind::Signal;
-    w.role      = GraphPinRole::Simple;
-    w.used      = used;
-    node.pins.append(w);
-
+    if (!patch->registerIsOutputOnly(reg)) {
+        inNode.pins.append(makePin(base, GraphPinDirection::Out));
+        return;
+    }
+    outNode.pins.append(makePin(base, GraphPinDirection::In));
     if (reg.getRegisterType() == REGISTER_NORMALIZE)
         return;
-
-    GraphPin r;
-    r.id        = hwReadPinId(reg, patch);   // base + ".read"
-    r.label     = reg.toString();            // self-labelled: read pins don't
-                                             // align row-for-row with write pins
-    r.direction = GraphPinDirection::Out;
-    r.portKind  = GraphPortKind::Signal;
-    r.role      = GraphPinRole::Simple;
-    r.used      = used;
-    node.pins.append(r);
+    outNode.pins.append(makePin(hwReadPinId(reg, patch), GraphPinDirection::Out));
 }
 
-void addHardwareNodes(GraphDescription &g, const Patch *patchConst)
+void addHardwareNodes(GraphDescription &g, const Patch *patchConst,
+                      const RackVisibilitySettings &vis)
 {
     // registerUsed is logically const (only iterates, never mutates); cast is safe.
     Patch *patch = const_cast<Patch *>(patchConst);
 
-    // Master I/O nodes
-    static const register_type_t globalTypes[] = {
-        REGISTER_INPUT, REGISTER_NORMALIZE, REGISTER_OUTPUT, REGISTER_GATE
-    };
-    GraphNode masterIn;
-    masterIn.id    = "hw.master.in";
-    masterIn.kind  = GraphNodeKind::HardwareSource;
-    masterIn.title = "Master in";
-
-    GraphNode masterOut;
-    masterOut.id    = "hw.master.out";
-    masterOut.kind  = GraphNodeKind::HardwareSink;
-    masterOut.title = "Master out";
-
-    for (register_type_t t : globalTypes) {
-        unsigned count = the_firmware->numGlobalRegisters(t);
-        for (unsigned n = 1; n <= count; n++) {
-            // Gates need the same normalization the parser applies: a bare gate
-            // 1..8 lives on the first G8 expander (g8=1, "G1.n"); 9.. are X7
-            // gates (g8=0, "Gn"). Building them as AtomRegister(t,0,0,n) would
-            // yield "Gn" for 1..8, whose id never matches the "G1.n" a wire
-            // carries — so the wire would be silently dropped. Round-trip the
-            // string form to get the canonical register.
-            AtomRegister reg = (t == REGISTER_GATE)
-                ? AtomRegister(QString(QChar(t)) + QString::number(n))
-                : AtomRegister(t, 0, 0, n);
-            appendRegisterPins(patch->registerIsOutputOnly(reg) ? masterOut : masterIn,
-                               reg, patch);
+    // One source/sink node pair per visible rack module (mirrors the rack view).
+    for (const RackModuleSpec &spec : visibleRackModules(patchConst, vis)) {
+        GraphNode in, out;
+        if (spec.name == QStringLiteral("g8")) {
+            in.id     = QString("hw.g8.%1.in").arg(spec.g8Number);
+            in.title  = QString("G8 #%1 in").arg(spec.g8Number);
+            out.id    = QString("hw.g8.%1.out").arg(spec.g8Number);
+            out.title = QString("G8 #%1 out").arg(spec.g8Number);
+        } else if (spec.name == QStringLiteral("x7")) {
+            in.id     = "hw.x7.in";       // never gets pins; dropped below
+            in.title  = "X7 in";
+            out.id    = "hw.x7.out";
+            out.title = "X7";
+        } else { // master / master18
+            in.id     = "hw.master.in";
+            in.title  = "Master in";
+            out.id    = "hw.master.out";
+            out.title = "Master out";
         }
-    }
-    if (!masterIn.pins.isEmpty())  g.nodes.append(masterIn);
-    if (!masterOut.pins.isEmpty()) g.nodes.append(masterOut);
+        in.kind  = GraphNodeKind::HardwareSource;
+        out.kind = GraphNodeKind::HardwareSink;
 
-    // Per-controller nodes
+        for (const AtomRegister &reg : registersOfModule(spec))
+            appendRegisterPins(in, out, reg, patch);
+
+        if (!in.pins.isEmpty())  g.nodes.append(in);
+        if (!out.pins.isEmpty()) g.nodes.append(out);
+    }
+
+    // Per-controller nodes (firmware enumeration, unchanged from M1)
     static const register_type_t ctrlSource[] = {
         REGISTER_POT, REGISTER_BUTTON, REGISTER_ENCODER, REGISTER_SWITCH
     };
@@ -201,12 +194,12 @@ void addHardwareNodes(GraphDescription &g, const Patch *patchConst)
         for (register_type_t t : ctrlSource) {
             unsigned count = the_firmware->numControllerRegisters(ctrlName, t);
             for (unsigned n = 1; n <= count; n++)
-                appendRegisterPins(controls, AtomRegister(t, static_cast<unsigned>(ci + 1), 0, n), patch);
+                appendRegisterPins(controls, leds, AtomRegister(t, static_cast<unsigned>(ci + 1), 0, n), patch);
         }
         for (register_type_t t : ctrlSink) {
             unsigned count = the_firmware->numControllerRegisters(ctrlName, t);
             for (unsigned n = 1; n <= count; n++)
-                appendRegisterPins(leds, AtomRegister(t, static_cast<unsigned>(ci + 1), 0, n), patch);
+                appendRegisterPins(controls, leds, AtomRegister(t, static_cast<unsigned>(ci + 1), 0, n), patch);
         }
 
         if (!controls.pins.isEmpty()) g.nodes.append(controls);
@@ -274,7 +267,7 @@ void addWires(GraphDescription &g, const Patch *patch)
 
 } // namespace
 
-GraphDescription GraphModel::describe(const Patch *patch)
+GraphDescription GraphModel::describe(const Patch *patch, const RackVisibilitySettings &vis)
 {
     GraphDescription g;
     for (qsizetype s = 0; s < patch->numSections(); s++) {
@@ -298,7 +291,7 @@ GraphDescription GraphModel::describe(const Patch *patch)
             g.nodes.append(node);
         }
     }
-    addHardwareNodes(g, patch);
+    addHardwareNodes(g, patch, vis);
     addWires(g, patch);
 
     for (qsizetype s = 0; s < patch->numSections(); s++) {
