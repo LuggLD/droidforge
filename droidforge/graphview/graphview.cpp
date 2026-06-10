@@ -8,6 +8,8 @@
 #include <QGraphicsScene>
 #include <QWheelEvent>
 #include <QMouseEvent>
+#include <QNativeGestureEvent>
+#include <cmath>
 #include <QGraphicsPathItem>
 #include <QPen>
 #include <QPainterPath>
@@ -24,6 +26,7 @@ GraphView::GraphView(PatchEditEngine *patch, QWidget *parent)
     setScene(scene);
     setRenderHint(QPainter::Antialiasing);
     setDragMode(QGraphicsView::ScrollHandDrag);
+    setTransformationAnchor(QGraphicsView::AnchorUnderMouse); // zoom toward cursor
     // The graph owns its background. Without this the canvas inherits the OS
     // palette (white in macOS light mode), where the hand-picked node/wire
     // colors — designed dark-first like most node editors — become illegible.
@@ -228,6 +231,13 @@ void GraphView::mouseMoveEvent(QMouseEvent *event)
         event->accept();
         return;
     }
+    // Hover feedback: pins are interactive (wire drags start there) — show a
+    // pointing hand instead of ScrollHandDrag's grab hand. Only while no
+    // button is down, so we never fight the closed-hand cursor mid-pan.
+    if (!event->buttons()) {
+        const bool overPin = !pinAtScene(mapToScene(event->pos())).isEmpty();
+        viewport()->setCursor(overPin ? Qt::PointingHandCursor : Qt::OpenHandCursor);
+    }
     QGraphicsView::mouseMoveEvent(event);
 }
 
@@ -361,16 +371,40 @@ void GraphView::contextMenuEvent(QContextMenuEvent *event)
     QGraphicsView::contextMenuEvent(event);
 }
 
-void GraphView::wheelEvent(QWheelEvent *event)
+void GraphView::applyZoom(double factor)
 {
     // Clamp the cumulative zoom so the view can never shrink to nothing (or
     // blow up). Without this, repeated zoom-out drove the scale toward 0 and
     // the graph became unrecoverable.
     constexpr double MIN_SCALE = 0.05, MAX_SCALE = 4.0;
     const double current = transform().m11();
-    double f = event->angleDelta().y() > 0 ? 1.15 : 1.0 / 1.15;
-    const double target = current * f;
-    if (target < MIN_SCALE)      f = MIN_SCALE / current;
-    else if (target > MAX_SCALE) f = MAX_SCALE / current;
-    scale(f, f);
+    const double target = current * factor;
+    if (target < MIN_SCALE)      factor = MIN_SCALE / current;
+    else if (target > MAX_SCALE) factor = MAX_SCALE / current;
+    scale(factor, factor);
+}
+
+void GraphView::wheelEvent(QWheelEvent *event)
+{
+    // Exponential zoom scaled by the actual wheel delta: ~7% per mouse-wheel
+    // notch (angleDelta 120), proportionally less for the fine-grained events
+    // trackpad scrolling emits. The old fixed 15% per event ignored the delta
+    // magnitude and made trackpads zoom wildly.
+    const double dy = event->angleDelta().y();
+    if (dy != 0.0)
+        applyZoom(std::pow(2.0, dy / 1200.0));
+}
+
+bool GraphView::viewportEvent(QEvent *event)
+{
+    // Trackpad pinch (macOS delivers it as a native zoom gesture on the
+    // viewport): value() is the incremental magnification per event.
+    if (event->type() == QEvent::NativeGesture) {
+        auto *gesture = static_cast<QNativeGestureEvent *>(event);
+        if (gesture->gestureType() == Qt::ZoomNativeGesture) {
+            applyZoom(1.0 + gesture->value());
+            return true;
+        }
+    }
+    return QGraphicsView::viewportEvent(event);
 }

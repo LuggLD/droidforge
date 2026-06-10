@@ -23,12 +23,14 @@ signals:
     void patchModified();
 protected:
     void wheelEvent(QWheelEvent *) override;
+    bool viewportEvent(QEvent *) override;          // trackpad pinch zoom
     void mousePressEvent(QMouseEvent *) override;
     void mouseMoveEvent(QMouseEvent *) override;
     void mouseReleaseEvent(QMouseEvent *) override;
     void keyPressEvent(QKeyEvent *) override;
     void contextMenuEvent(QContextMenuEvent *) override;
 private:
+    void applyZoom(double factor);                   // clamped scale()
     // Returns the pin id under a scene position, or empty. Scans NodeItems.
     QString pinAtScene(const QPointF &scenePos) const;
     QPointF pinScenePos(const QString &pinId) const; // scene pos of a pin's anchor, or null
