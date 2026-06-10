@@ -36,7 +36,8 @@ QList<RackModuleSpec> visibleRackModules(const Patch *patch,
 RegisterList registersOfModule(const RackModuleSpec &spec);
 
 // True for registers the hardware uses as input OR output depending on the
-// patch: exactly the gate jacks on a G8 expander (master16: every g8 bank;
+// patch: exactly the gate jacks on a G8 expander (master16: every G8
+// expander bank, g8 >= 1;
 // master18: g8 >= 2 — its built-in g8==1 bank is output-only, like X7's G9+).
 // Assumes canonicalized registers (bare "G1".."G8" forms never reach this).
 bool registerIsBidirectional(const Patch *patch, const AtomRegister &reg);

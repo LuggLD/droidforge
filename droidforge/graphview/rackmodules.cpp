@@ -39,7 +39,9 @@ RegisterList registersOfModule(const RackModuleSpec &spec)
         if (reg.getRegisterType() == REGISTER_GATE)
             // Canonicalize via the string parser: ModuleMaster18 emits bare
             // G1..G4 (g8=0), but the canonical patch form is G1.1..G1.4 — the
-            // exact mismatch behind the 2026-06-10 vanishing-wire bug.
+            // exact mismatch behind the 2026-06-10 vanishing-wire bug. (For
+            // g8/x7 gates the round-trip is a no-op; the uniform path is
+            // deliberate — don't "optimize" it away, master18 breaks.)
             out.append(AtomRegister(reg.toString()));
         else if (spec.name == QStringLiteral("g8")
                  && reg.getRegisterType() == REGISTER_RGB_LED)
