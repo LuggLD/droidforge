@@ -11,9 +11,8 @@ the problem, proposed approaches, and notes.
 
 | Issue | Severity | Status |
 |---|---|---|
-| [Rack-accurate hardware nodes (MASTER/MASTER18/G8/X7)](node-graph-rack-accurate-hardware-nodes.md) | medium | next session |
-| [Graph wiring doesn't trigger rack auto-show/hide of X7 & G8s](node-graph-rack-auto-show-hide.md) | medium | next session (adjacent to above) |
 | [Output-register read-back feels wrong in the graph](node-graph-output-register-readback-ux.md) | low–medium | needs design pass |
+| [G8 used only via RGB LEDs stays hidden; wire drops](node-graph-g8-visibility-rgb-only.md) | low | recorded 2026-06-10 |
 | [Compound input pin role indicators](node-graph-compound-input-indicators.md) | low | appearance/polish |
 | [Pin-id grammar duplicated (construction vs parsing)](node-graph-pin-id-grammar-duplication.md) | low (tech debt) | when convenient |
 | [Model N's internal link to its input](node-graph-model-n-internal-link.md) | low | deferred |
