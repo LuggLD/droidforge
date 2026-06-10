@@ -498,6 +498,7 @@ void MainWindow::createViewMenu()
     QAction *viewGraphAction = new QAction(tr("Node Graph"), this);
     viewGraphAction->setCheckable(true);
     viewGraphAction->setChecked(false);
+    viewGraphAction->setShortcut(QKeySequence(tr("Ctrl+G")));
     connect(viewGraphAction, &QAction::toggled, this, &MainWindow::toggleGraphView);
     menu->addAction(viewGraphAction);
 
