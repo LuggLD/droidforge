@@ -12,7 +12,9 @@ the problem, proposed approaches, and notes.
 | Issue | Severity | Status |
 |---|---|---|
 | [Output-register read-back feels wrong in the graph](node-graph-output-register-readback-ux.md) | low–medium | needs design pass |
+| [Copy/Move drop onto a hardware write pin: cursor valid, semantics off](node-graph-copy-move-onto-hw-write-pin.md) | low–medium | recorded 2026-06-10 |
 | [G8 used only via RGB LEDs stays hidden; wire drops](node-graph-g8-visibility-rgb-only.md) | low | recorded 2026-06-10 |
+| [Alt-click disconnect on an unconnected pin commits an empty undo step](node-graph-disconnect-empty-commit.md) | low | recorded 2026-06-10 |
 | [Compound input pin role indicators](node-graph-compound-input-indicators.md) | low | appearance/polish |
 | [Pin-id grammar duplicated (construction vs parsing)](node-graph-pin-id-grammar-duplication.md) | low (tech debt) | when convenient |
 | [Model N's internal link to its input](node-graph-model-n-internal-link.md) | low | deferred |
