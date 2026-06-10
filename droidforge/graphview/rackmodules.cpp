@@ -34,7 +34,14 @@ RegisterList registersOfModule(const RackModuleSpec &)
     return RegisterList();
 }
 
-bool registerIsBidirectional(const Patch *, const AtomRegister &)
+bool registerIsBidirectional(const Patch *patch, const AtomRegister &reg)
 {
-    return false;
+    if (reg.getRegisterType() != REGISTER_GATE)
+        return false;
+    const unsigned g8 = reg.getG8Number();
+    if (g8 == 0)
+        return false;                          // X7 gates (G9+) are output-only
+    if (patch->typeOfMaster() == 18 && g8 == 1)
+        return false;                          // MASTER18 built-in gate outputs
+    return true;                               // a G8 expander jack
 }
