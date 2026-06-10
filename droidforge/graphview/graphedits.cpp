@@ -7,6 +7,7 @@
 #include "atomcable.h"
 #include "atomregister.h"
 #include "droidfirmware.h"
+#include "rackmodules.h"
 
 extern DroidFirmware *the_firmware;
 
@@ -25,7 +26,7 @@ PinRef parsePin(const Patch *patch, const QString &pinId)
         AtomRegister areg(rest);
         if (isRead)
             ref.kind = PinRef::HwRead;
-        else if (patch->registerIsOutputOnly(areg))
+        else if (patch->registerIsOutputOnly(areg) || registerIsBidirectional(patch, areg))
             ref.kind = PinRef::HwWrite;
         else
             ref.kind = PinRef::HwSource;
@@ -275,7 +276,7 @@ QString getConnectedSource(const Patch *patch, const QString &sinkPin)
             return QString();
         if (a->isRegister()) {
             AtomRegister areg(a->toString());
-            return patch->registerIsOutputOnly(areg)
+            return (patch->registerIsOutputOnly(areg) || registerIsBidirectional(patch, areg))
                        ? (QString("hw.") + a->toString() + ".read")
                        : (QString("hw.") + a->toString());
         }
