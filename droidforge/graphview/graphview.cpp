@@ -29,6 +29,11 @@ GraphView::GraphView(PatchEditEngine *patch, QWidget *parent)
 
 void GraphView::rebuildGraphics()
 {
+    // Rebuilds can arrive mid-drag (hub broadcasts from other views, View-menu
+    // toggles, colorscheme changes). scene->clear() would delete the live
+    // rubber item under us — tear the drag down first.
+    if (dragging)
+        endDrag();
     scene->clear();
     // Same settings the rack view honors; written by RackView::showG8s/showX7
     // before our slot runs (its action connections predate ours).
