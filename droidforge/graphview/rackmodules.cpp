@@ -29,9 +29,28 @@ QList<RackModuleSpec> visibleRackModules(const Patch *patchConst,
     return mods;
 }
 
-RegisterList registersOfModule(const RackModuleSpec &)
+RegisterList registersOfModule(const RackModuleSpec &spec)
 {
-    return RegisterList();
+    RegisterList raw;
+    ModuleBuilder::allRegistersOf(spec.name, 0, spec.g8Number, raw);
+
+    RegisterList out;
+    for (const AtomRegister &reg : raw) {
+        if (reg.getRegisterType() == REGISTER_GATE)
+            // Canonicalize via the string parser: ModuleMaster18 emits bare
+            // G1..G4 (g8=0), but the canonical patch form is G1.1..G1.4 — the
+            // exact mismatch behind the 2026-06-10 vanishing-wire bug.
+            out.append(AtomRegister(reg.toString()));
+        else if (spec.name == QStringLiteral("g8")
+                 && reg.getRegisterType() == REGISTER_RGB_LED)
+            // allRegistersOf can't know the rack-position R offset (it is
+            // injected by RackView::addModule, not the module type).
+            out.append(AtomRegister(REGISTER_RGB_LED, 0, 0,
+                                    reg.getNumber() + spec.rgbOffset));
+        else
+            out.append(reg);
+    }
+    return out;
 }
 
 bool registerIsBidirectional(const Patch *patch, const AtomRegister &reg)
